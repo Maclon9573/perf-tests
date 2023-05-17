@@ -37,12 +37,12 @@ spec:
     interval: 5s
   {{end}}
   {{if $PROMETHEUS_SCRAPE_MASTER_KUBELETS}}
-  - interval: 5s
-    port: kubelet
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
-    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+#  - interval: 5s
+#    port: kubelet
+#    scheme: https
+#    tlsConfig:
+#      insecureSkipVerify: true
+#    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
   - interval: 5s
     port: kubelet
     path: /metrics/cadvisor

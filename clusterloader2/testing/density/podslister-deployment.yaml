@@ -15,11 +15,17 @@ spec:
         name: {{.Name}}
         group: {{.Group}}
     spec:
-#      nodeSelector:
-#        app: nginx
+      #      nodeSelector:
+      #        app: nginx
       containers:
-      - image: registry.aliyuncs.com/google_containers/pause:3.2
-        imagePullPolicy: IfNotPresent
+      - args:
+        - --workloadGV=apps/v1
+        - --workloadKind=Deployment
+        - --workloadName={{.Name}}
+        - --listInterval=5
+        - --maxPodsCount=5
+        image: maclonma/podslister:v1.0
+        imagePullPolicy: Always
         name: {{.Name}}
         ports:
         resources:
@@ -29,11 +35,11 @@ spec:
       # Add not-ready/unreachable tolerations for 15 minutes so that node
       # failure doesn't trigger pod deletion.
       tolerations:
-      - key: "node.kubernetes.io/not-ready"
-        operator: "Exists"
-        effect: "NoExecute"
-        tolerationSeconds: 900
-      - key: "node.kubernetes.io/unreachable"
-        operator: "Exists"
-        effect: "NoExecute"
-        tolerationSeconds: 900
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 900
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 900

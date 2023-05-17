@@ -1,0 +1,268 @@
+#Constants
+{{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 1)}}
+{{$PODS_PER_NODE := DefaultParam .PODS_PER_NODE 5}}
+{{$DENSITY_TEST_THROUGHPUT := DefaultParam .DENSITY_TEST_THROUGHPUT 15}}
+{{$SCHEDULER_THROUGHPUT_THRESHOLD := DefaultParam .CL2_SCHEDULER_THROUGHPUT_THRESHOLD 0}}
+{{$MIN_SATURATION_PODS_TIMEOUT := 60}}
+#Variables
+{{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
+{{$podsPerNamespace := MultiplyInt $PODS_PER_NODE $NODES_PER_NAMESPACE}}
+{{$totalPods := MultiplyInt $podsPerNamespace $namespaces}}
+{{$saturationDeploymentTimeout := DivideFloat $totalPods $DENSITY_TEST_THROUGHPUT | AddInt $MIN_SATURATION_PODS_TIMEOUT}}
+{{$saturationDeploymentHardTimeout := MaxInt $saturationDeploymentTimeout 1200}}
+
+{{$saturationDeploymentSpec := DefaultParam .SATURATION_DEPLOYMENT_SPEC "deployment.yaml"}}
+{{$ALLOWED_CONTAINER_RESTARTS := DefaultParam .CL2_ALLOWED_CONTAINER_RESTARTS 1}}
+{{$CUSTOM_ALLOWED_CONTAINER_RESTARTS := DefaultParam .CL2_CUSTOM_ALLOWED_CONTAINER_RESTARTS ""}}
+
+
+
+name: kube-scheduler
+namespace:
+  number: {{$namespaces}}
+tuningSets:
+- name: Uniform5qps
+  qpsLoad:
+    qps: 1
+- name: Uniform1rand
+  randomizedLoad:
+    averageQps: 2
+steps:
+- name: Starting measurements
+  measurements:
+  - Identifier: ContainerRestarts
+    Method: ContainerRestarts
+    Params:
+      action: start
+      enableViolations: true
+      defaultAllowedRestarts: {{$ALLOWED_CONTAINER_RESTARTS}}
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+  - Identifier: SchedulingMetrics
+    Method: SchedulingMetrics
+    Params:
+      action: start
+  - Identifier: SchedulerDuration
+    Method: GenericPrometheusQuery
+    Params:
+      action: start
+      metricName: Scheduler Duration
+      metricVersion: v1
+      unit: ms
+      dimensions:
+        - le
+      queries:
+        - name: max
+          query: histogram_quantile(1, sum by (le) (rate(scheduler_scheduling_algorithm_duration_seconds_bucket[5m]))) * 1000
+          requireSamples: true
+  - Identifier: ContainerCPU
+    Method: GenericPrometheusQuery
+    Params:
+      action: start
+      metricName: Container CPU
+      metricVersion: v1
+      unit: cores
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time(rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m])[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m]))[%v:])
+          requireSamples: true
+  - Identifier: ContainerMemory
+    Method: GenericPrometheusQuery
+    Params:
+      action: start
+      metricName: Container Memory
+      metricVersion: v1
+      unit: MiB
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time((container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+
+- name: Starting saturation pod measurements
+  measurements:
+  - Identifier: SaturationPodStartupLatency
+    Method: PodStartupLatency
+    Params:
+      action: start
+      labelSelector: group = saturation
+      threshold: {{$saturationDeploymentTimeout}}s
+  - Identifier: WaitForRunningSaturationDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: start
+      apiVersion: apps/v1
+      kind: Deployment
+      labelSelector: group = saturation
+      operationTimeout: {{$saturationDeploymentHardTimeout}}s
+  - Identifier: SchedulingThroughput
+    Method: SchedulingThroughput
+    Params:
+      action: start
+      labelSelector: group = saturation
+
+- name: Creating saturation pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 5
+    tuningSet: Uniform5qps
+    objectBundle:
+    - basename: saturation-deployment
+      objectTemplatePath: {{$saturationDeploymentSpec}}
+      templateFillMap:
+        Replicas: 1
+        Group: saturation
+        CpuRequest: 1m
+        MemoryRequest: 10M
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 3
+    tuningSet: Uniform1rand
+    objectBundle:
+    - basename: saturation-deployment2
+      objectTemplatePath: {{$saturationDeploymentSpec}}
+      templateFillMap:
+        Replicas: 1
+        Group: saturation
+        CpuRequest: 1m
+        MemoryRequest: 10M
+
+- name: Collecting saturation pod measurements
+  measurements:
+  - Identifier: WaitForRunningSaturationDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: gather
+- measurements:
+  - Identifier: SaturationPodStartupLatency
+    Method: PodStartupLatency
+    Params:
+      action: gather
+- measurements:
+  - Identifier: SchedulingThroughput
+    Method: SchedulingThroughput
+    Params:
+      action: gather
+      threshold: {{$SCHEDULER_THROUGHPUT_THRESHOLD}}
+
+- name: Deleting saturation pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 0
+    tuningSet: Uniform5qps
+    objectBundle:
+    - basename: saturation-deployment
+      objectTemplatePath: {{$saturationDeploymentSpec}}
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 0
+    tuningSet: Uniform1rand
+    objectBundle:
+    - basename: saturation-deployment2
+      objectTemplatePath: {{$saturationDeploymentSpec}}
+
+- name: Waiting for saturation pods to be deleted
+  measurements:
+  - Identifier: WaitForRunningSaturationDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: gather
+
+- name: Collecting measurements
+  measurements:
+  - Identifier: ContainerRestarts
+    Method: ContainerRestarts
+    Params:
+      action: gather
+      enableViolations: true
+      defaultAllowedRestarts: {{$ALLOWED_CONTAINER_RESTARTS}}
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+  - Identifier: SchedulingMetrics
+    Method: SchedulingMetrics
+    Params:
+      action: gather
+  - Identifier: SchedulerDuration
+    Method: GenericPrometheusQuery
+    Params:
+      action: gather
+      metricName: Scheduler Duration
+      metricVersion: v1
+      unit: ms
+      dimensions:
+        - le
+      queries:
+        - name: max
+          query: histogram_quantile(1, sum by (le) (rate(scheduler_scheduling_algorithm_duration_seconds_bucket[5m]))) * 1000
+          requireSamples: true
+  - Identifier: ContainerCPU
+    Method: GenericPrometheusQuery
+    Params:
+      action: gather
+      enableViolations: true
+      metricName: Container CPU
+      metricVersion: v1
+      unit: cores
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time(rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m])[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-scheduler"}[1m]))[%v:])
+          requireSamples: true
+  - Identifier: ContainerMemory
+    Method: GenericPrometheusQuery
+    Params:
+      action: gather
+      enableViolations: true
+      metricName: Container Memory
+      metricVersion: v1
+      unit: MiB
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time((container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-scheduler"} / 1024 / 1024)[%v:])
+          requireSamples: true

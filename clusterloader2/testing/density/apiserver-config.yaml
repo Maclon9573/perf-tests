@@ -1,0 +1,327 @@
+#Constants
+{{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 1)}}
+{{$PODS_PER_NODE := DefaultParam .PODS_PER_NODE 45}}
+{{$DENSITY_TEST_THROUGHPUT := DefaultParam .DENSITY_TEST_THROUGHPUT 5}}
+{{$SCHEDULER_THROUGHPUT_THRESHOLD := DefaultParam .CL2_SCHEDULER_THROUGHPUT_THRESHOLD 0}}
+{{$LATENCY_POD_CPU := DefaultParam .LATENCY_POD_CPU 0.01}}
+{{$LATENCY_POD_MEMORY := DefaultParam .LATENCY_POD_MEMORY 0.03}}
+{{$MIN_LATENCY_PODS := 3}}
+{{$MIN_SATURATION_PODS_TIMEOUT := 60}}
+{{$ENABLE_CHAOSMONKEY := DefaultParam .ENABLE_CHAOSMONKEY false}}
+{{$ENABLE_SYSTEM_POD_METRICS:= DefaultParam .ENABLE_SYSTEM_POD_METRICS true}}
+{{$USE_SIMPLE_LATENCY_QUERY := DefaultParam .USE_SIMPLE_LATENCY_QUERY false}}
+{{$WARM_UP_CLUSTER := DefaultParam .WARM_UP_CLUSTER false}}
+{{$ENABLE_RESTART_COUNT_CHECK := DefaultParam .ENABLE_RESTART_COUNT_CHECK true}}
+{{$RESTART_COUNT_THRESHOLD_OVERRIDES:= DefaultParam .RESTART_COUNT_THRESHOLD_OVERRIDES ""}}
+#Variables
+{{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
+{{$warmUpNamespaces := DivideInt $namespaces 10}}
+{{$podsPerNamespace := MultiplyInt $PODS_PER_NODE $NODES_PER_NAMESPACE}}
+{{$warmPodsPerNamespace := 10}}
+
+{{$listpodsDeploymentSpec := DefaultParam .LISTPODS_DEPLOYMENT_SPEC "podslister-deployment.yaml"}}
+{{$latencyDeploymentSpec := DefaultParam .LATENCY_DEPLOYMENT_SPEC "deployment.yaml"}}
+{{$API_AVAILABILITY_PERCENTAGE_THRESHOLD := DefaultParam .CL2_API_AVAILABILITY_PERCENTAGE_THRESHOLD 99.5}}
+
+
+
+name: kube-apiserver
+namespace:
+  number: {{$namespaces}}
+tuningSets:
+- name: Uniform5qps
+  qpsLoad:
+    qps: 5
+steps:
+{{if $WARM_UP_CLUSTER}}
+- name: Starting warming up pod measurements
+  measurements:
+  - Identifier: WaitForRunningWarnUpDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: start
+      apiVersion: apps/v1
+      kind: Deployment
+      labelSelector: group = warmup
+      operationTimeout: 15m
+
+- name: Creating warming up pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$warmUpNamespaces}}
+    replicasPerNamespace: 1
+    tuningSet: Uniform5qps
+    objectBundle:
+    - basename: warmup-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+      templateFillMap:
+        Replicas: {{$warmPodsPerNamespace}}
+        Group: latency
+        CpuRequest: {{$LATENCY_POD_CPU}}m
+        MemoryRequest: {{$LATENCY_POD_MEMORY}}M
+
+- name: Waiting for warming up pods to be running
+  measurements:
+  - Identifier: WaitForRunningWarnUpDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: gather
+
+- name: Deleting warming up pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$warmUpNamespaces}}
+    replicasPerNamespace: 0
+    tuningSet: Uniform5qps
+    objectBundle:
+    - basename: warmup-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+{{end}}
+- name: Starting measurements
+  measurements:
+  - Identifier: APIResponsivenessPrometheus
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: start
+  - Identifier: APIResponsivenessPrometheusSimple
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: start
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: start
+      pollFrequency: "3s"
+      hostPollTimeoutSeconds: 5
+      threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
+  - Identifier: ContainerCPU
+    Method: GenericPrometheusQuery
+    Params:
+      action: start
+      metricName: ContainerCPU
+      metricVersion: v1
+      unit: cores
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m])[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m]))[%v:])
+          requireSamples: true
+  - Identifier: ContainerMemory
+    Method: GenericPrometheusQuery
+    Params:
+      action: start
+      metricName: ContainerMemory
+      metricVersion: v1
+      unit: MiB
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time((container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+
+- name: Starting list/get pod measurements
+  measurements:
+    - Identifier: WaitForRunningListpodsDeployments
+      Method: WaitForControlledPodsRunning
+      Params:
+        action: start
+        apiVersion: apps/v1
+        kind: Deployment
+        labelSelector: group = listpods
+        operationTimeout: 15m
+
+- name: Creating list/get pods
+  phases:
+    - namespaceRange:
+        min: 1
+        max: {{$namespaces}}
+      replicasPerNamespace: 5
+      tuningSet: Uniform5qps
+      objectBundle:
+        - basename: listpods-deployment
+          objectTemplatePath: {{$listpodsDeploymentSpec}}
+          templateFillMap:
+            Replicas: 1
+            Group: listpods
+            CpuRequest: 1m
+            MemoryRequest: 10M
+
+- name: Waiting for list/get pods to be running
+  measurements:
+    - Identifier: WaitForRunningListpodsDeployments
+      Method: WaitForControlledPodsRunning
+      Params:
+        action: gather
+
+- name: Starting latency pod measurements
+  measurements:
+  - Identifier: PodStartupLatency
+    Method: PodStartupLatency
+    Params:
+      action: start
+      labelSelector: group = latency
+  - Identifier: WaitForRunningLatencyDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: start
+      apiVersion: apps/v1
+      kind: Deployment
+      labelSelector: group = latency
+      operationTimeout: 15m
+
+- name: Creating latency pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 1
+    tuningSet: Uniform5qps
+    objectBundle:
+    - basename: latency-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+      templateFillMap:
+        Replicas: {{$podsPerNamespace}}
+        Group: latency
+        CpuRequest: {{$LATENCY_POD_CPU}}m
+        MemoryRequest: {{$LATENCY_POD_MEMORY}}M
+
+- name: Waiting for latency pods to be running
+  measurements:
+  - Identifier: WaitForRunningLatencyDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: gather
+
+- name: Deleting latency pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 0
+    tuningSet: Uniform5qps
+    objectBundle:
+    - basename: latency-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+
+- name: Waiting for latency pods to be deleted
+  measurements:
+  - Identifier: WaitForRunningLatencyDeployments
+    Method: WaitForControlledPodsRunning
+    Params:
+      action: gather
+
+- name: Collecting pod startup latency
+  measurements:
+  - Identifier: PodStartupLatency
+    Method: PodStartupLatency
+    Params:
+      action: gather
+
+- name: Deleting list/get pods
+  phases:
+    - namespaceRange:
+        min: 1
+        max: {{$namespaces}}
+      replicasPerNamespace: 0
+      tuningSet: Uniform5qps
+      objectBundle:
+        - basename: listpods-deployment
+          objectTemplatePath: {{$listpodsDeploymentSpec}}
+
+- name: Waiting for list/get pods to be deleted
+  measurements:
+    - Identifier: WaitForRunningListpodsDeployments
+      Method: WaitForControlledPodsRunning
+      Params:
+        action: gather
+
+- name: Collecting measurements
+  measurements:
+  - Identifier: APIResponsivenessPrometheusSimple
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: gather
+      enableViolations: true
+      useSimpleLatencyQuery: true
+      summaryName: APIResponsivenessPrometheus_simple
+  {{if not $USE_SIMPLE_LATENCY_QUERY}}
+  - Identifier: APIResponsivenessPrometheus
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: gather
+  {{end}}
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: gather
+      pollFrequency: "3s"
+      hostPollTimeoutSeconds: 3
+      threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
+  - Identifier: ContainerCPU
+    Method: GenericPrometheusQuery
+    Params:
+      action: gather
+      enableViolations: true
+      metricName: ContainerCPU
+      metricVersion: v1
+      unit: cores
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m])[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m]))[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver"}[1m]))[%v:])
+          requireSamples: true
+  - Identifier: ContainerMemory
+    Method: GenericPrometheusQuery
+    Params:
+      action: gather
+      enableViolations: true
+      metricName: ContainerMemory
+      metricVersion: v1
+      unit: MiB
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max_over_time((container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc99
+          query: quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc90
+          query: quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true
+        - name: Perc50
+          query: quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver"} / 1024 / 1024)[%v:])
+          requireSamples: true

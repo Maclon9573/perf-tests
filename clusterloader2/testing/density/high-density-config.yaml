@@ -14,11 +14,11 @@
 # Increasing allocation of both memory and cpu by 10%
 # decreases the value of priority function in scheduler by one point.
 # This results in decreased probability of choosing the same node again.
-{{$LATENCY_POD_CPU := DefaultParam .LATENCY_POD_CPU 100}}
-{{$LATENCY_POD_MEMORY := DefaultParam .LATENCY_POD_MEMORY 350}}
-{{$MIN_LATENCY_PODS := 500}}
-{{$MIN_SATURATION_PODS_TIMEOUT := 180}}
-{{$ENABLE_CHAOSMONKEY := DefaultParam .ENABLE_CHAOSMONKEY false}}
+{{$LATENCY_POD_CPU := DefaultParam .LATENCY_POD_CPU 0.01}}
+{{$LATENCY_POD_MEMORY := DefaultParam .LATENCY_POD_MEMORY 0.03}}
+{{$MIN_LATENCY_PODS := 5}}
+{{$MIN_SATURATION_PODS_TIMEOUT := 60}}
+{{$ENABLE_CHAOSMONKEY := DefaultParam .ENABLE_CHAOSMONKEY true}}
 {{$ENABLE_SYSTEM_POD_METRICS:= DefaultParam .ENABLE_SYSTEM_POD_METRICS true}}
 {{$USE_SIMPLE_LATENCY_QUERY := DefaultParam .USE_SIMPLE_LATENCY_QUERY false}}
 {{$ENABLE_RESTART_COUNT_CHECK := DefaultParam .ENABLE_RESTART_COUNT_CHECK false}}

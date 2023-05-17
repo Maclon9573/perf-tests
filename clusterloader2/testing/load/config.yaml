@@ -6,16 +6,16 @@
 
 #Constants
 # Cater for the case where the number of nodes is less than nodes per namespace. See https://github.com/kubernetes/perf-tests/issues/887
-{{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 100)}}
+{{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 1)}}
 # See https://github.com/kubernetes/perf-tests/pull/1667#issuecomment-769642266
 {{$IS_SMALL_CLUSTER := lt .Nodes 100}}
-{{$PODS_PER_NODE := DefaultParam .PODS_PER_NODE 30}}
+{{$PODS_PER_NODE := DefaultParam .PODS_PER_NODE 10}}
 {{$LOAD_TEST_THROUGHPUT := DefaultParam .CL2_LOAD_TEST_THROUGHPUT 10}}
 {{$DELETE_TEST_THROUGHPUT := DefaultParam .CL2_DELETE_TEST_THROUGHPUT $LOAD_TEST_THROUGHPUT}}
 {{$RATE_LIMIT_POD_CREATION := DefaultParam .CL2_RATE_LIMIT_POD_CREATION true}}
 {{$BIG_GROUP_SIZE := DefaultParam .BIG_GROUP_SIZE 250}}
-{{$MEDIUM_GROUP_SIZE := DefaultParam .MEDIUM_GROUP_SIZE 30}}
-{{$SMALL_GROUP_SIZE := DefaultParam .SMALL_GROUP_SIZE 5}}
+{{$MEDIUM_GROUP_SIZE := DefaultParam .MEDIUM_GROUP_SIZE 3}}
+{{$SMALL_GROUP_SIZE := DefaultParam .SMALL_GROUP_SIZE 1}}
 {{$SMALL_STATEFUL_SETS_PER_NAMESPACE := DefaultParam .SMALL_STATEFUL_SETS_PER_NAMESPACE 1}}
 {{$MEDIUM_STATEFUL_SETS_PER_NAMESPACE := DefaultParam .MEDIUM_STATEFUL_SETS_PER_NAMESPACE 1}}
 {{$ENABLE_CHAOSMONKEY := DefaultParam .ENABLE_CHAOSMONKEY false}}
@@ -53,7 +53,7 @@
 # pod-startup-latency or scheduler-throughput. The purpose of it is to avoid
 # problems in small clusters where we wouldn't have enough samples (pods) to
 # measure things accurately.
-{{$MIN_PODS_IN_SMALL_CLUSTERS := 500}}
+{{$MIN_PODS_IN_SMALL_CLUSTERS := 10}}
 
 # BEGIN scheduler-throughput section
 # TODO( https://github.com/kubernetes/perf-tests/issues/1027): Lower the number of "min-pods" once we fix the scheduler throughput measurement.
@@ -101,7 +101,7 @@ tuningSets:
     # The expected number of created/deleted pods is totalPods/4 when scaling,
     # as each RS changes its size from X to a uniform random value in [X/2, 3X/2].
     # To match 10 [pods/s] requirement, we need to divide saturationTime by 4.
-    timeLimit: {{DivideInt $saturationTime 4}}s
+    timeLimit: 10s
 - name: RandomizedDeletionTimeLimited
   RandomizedTimeLimitedLoad:
     timeLimit: {{$deletionTime}}s

@@ -13,6 +13,8 @@ spec:
        labels:
          feature: exec
     spec:
+      nodeSelector: # 使用kubemark选择节点
+        kubernetes.io/hostname: k8s-node1
       containers:
       - name: agnhost
-        image: registry.k8s.io/e2e-test-images/agnhost:2.32
+        image: e2eteam/agnhost:2.26

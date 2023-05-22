@@ -15,17 +15,15 @@ spec:
         name: {{.Name}}
         group: {{.Group}}
     spec:
-      #      nodeSelector:
-      #        app: nginx
       containers:
       - args:
         - --workloadGV=apps/v1
         - --workloadKind=Deployment
         - --workloadName={{.Name}}
-        - --listInterval=5
-        - --maxPodsCount=5
+        - --listInterval={{.ListInterval}}
+        - --maxPodsCount={{.MaxPodsCount}}
         image: maclonma/podslister:v1.0
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: {{.Name}}
         ports:
         resources:

@@ -8,7 +8,7 @@ metadata:
 spec:
   containers:
     - name: prometheus-node-exporter
-      image: gcr.io/k8s-testimages/quay.io/prometheus/node-exporter:v1.0.1
+      image: quay.io/prometheus-operator/prometheus-operator:v0.44.1
       imagePullPolicy: "IfNotPresent"
       args:
         - --path.sysfs=/host/sys

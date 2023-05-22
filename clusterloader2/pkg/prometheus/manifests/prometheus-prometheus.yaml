@@ -18,7 +18,7 @@ metadata:
 spec:
   logLevel: debug
   enableAdminAPI: true
-  baseImage: gcr.io/k8s-testimages/quay.io/prometheus/prometheus
+  baseImage: quay.io/prometheus/prometheus
   nodeSelector:
     kubernetes.io/os: linux
     {{$PROMETHEUS_NODE_SELECTOR}}
@@ -66,17 +66,17 @@ spec:
   priorityClassName: prometheus-priorityclass
   version: v2.25.0
   retention: 7d
-  {{if not $PROMETHEUS_TOLERATE_MASTER}}
-  # We add node tolerations for control-plane nodes in Azure Windows test jobs which do not support Google PD
-  storage:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: {{$PROMETHEUS_PVC_STORAGE_CLASS}}
-        resources:
-          requests:
-            # Start with 10Gi, add 10Gi for each 1K nodes.
-            storage: {{MultiplyInt 10 (AddInt 1 (DivideInt .Nodes 1000))}}Gi
-  {{ end }}
+#  {{if not $PROMETHEUS_TOLERATE_MASTER}}
+#  # We add node tolerations for control-plane nodes in Azure Windows test jobs which do not support Google PD
+#  storage:
+#    volumeClaimTemplate:
+#      spec:
+#        storageClassName: {{$PROMETHEUS_PVC_STORAGE_CLASS}}
+#        resources:
+#          requests:
+#            # Start with 10Gi, add 10Gi for each 1K nodes.
+#            storage: {{MultiplyInt 10 (AddInt 1 (DivideInt .Nodes 1000))}}Gi
+#  {{ end }}
   query:
     maxSamples: 100000000
   {{if $PROMETHEUS_SCRAPE_WINDOWS_NODES}}

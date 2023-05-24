@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -95,7 +96,11 @@ func (a *apiAvailabilityMeasurement) pollHost(hostIP string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("problem with GetPod(): %w", err)
 	}
-	cmd := fmt.Sprintf("curl --connect-timeout %d -s -k -w \"%%{http_code}\" -o /dev/null https://%s:6443/readyz", a.hostPollTimeoutSeconds, hostIP)
+	apiserverPort := os.Getenv("CL2_APISERVER_PORT")
+	if apiserverPort == "" {
+		apiserverPort = "6443"
+	}
+	cmd := fmt.Sprintf("curl --connect-timeout %d -s -k -w \"%%{http_code}\" -o /dev/null https://%s:%s/readyz", a.hostPollTimeoutSeconds, hostIP, apiserverPort)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.hostPollExecTimeoutSeconds)*time.Second)
 	defer cancel()
 	output, err := execservice.RunCommand(ctx, pod, cmd)

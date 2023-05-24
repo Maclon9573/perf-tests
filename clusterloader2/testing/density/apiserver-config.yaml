@@ -1,8 +1,9 @@
 #Constants
 {{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 1)}}
-{{$CL2_PODS_PER_NODE := DefaultParam .CL2_PODS_PER_NODE 45}}
-{{$TUNINGSET_QPS := DefaultParam .TUNINGSET_QPS 5}}
-{{$LISTPODS_COUNT := DefaultParam .LISTPODS_COUNT 1}}
+{{$CL2_WORKLOAD_PER_NAMESPACE := DefaultParam .CL2_WORKLOAD_PER_NAMESPACE 1}}
+{{$CL2_PODS_PER_WORKLOAD := DefaultParam .CL2_PODS_PER_WORKLOAD 10}}
+{{$CL2_TUNINGSET_QPS := DefaultParam .CL2_TUNINGSET_QPS 5}}
+{{$CL2_LISTPODS_PER_WORKLOAD := DefaultParam .CL2_LISTPODS_PER_WORKLOAD 1}}
 {{$LISTPODS_Interval := DefaultParam .LISTPODS_Interval 5}}
 {{$MAX_GET_PODS_COUNT := DefaultParam .MAX_GET_PODS_COUNT 5}}
 {{$DENSITY_TEST_THROUGHPUT := DefaultParam .DENSITY_TEST_THROUGHPUT 5}}
@@ -22,13 +23,13 @@
 #Variables
 {{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
 {{$warmUpNamespaces := DivideInt $namespaces 10}}
-{{$podsPerNamespace := MultiplyInt $CL2_PODS_PER_NODE $NODES_PER_NAMESPACE}}
 {{$warmPodsPerNamespace := 10}}
 
 {{$kubemarkReplicationControllerSpec := DefaultParam .KUBEMARK_ReplicationController_SPEC "kubemark-rc.yaml"}}
 {{$listpodsDeploymentSpec := DefaultParam .LISTPODS_DEPLOYMENT_SPEC "podslister-deployment.yaml"}}
 {{$latencyDeploymentSpec := DefaultParam .LATENCY_DEPLOYMENT_SPEC "deployment.yaml"}}
 {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD := DefaultParam .CL2_API_AVAILABILITY_PERCENTAGE_THRESHOLD 99.5}}
+{{$CUSTOM_ALLOWED_CONTAINER_RESTARTS := DefaultParam .CL2_CUSTOM_ALLOWED_CONTAINER_RESTARTS ""}}
 
 
 
@@ -38,7 +39,7 @@ namespace:
 tuningSets:
 - name: Uniform5qps
   qpsLoad:
-    qps: {{$TUNINGSET_QPS}}
+    qps: {{$CL2_TUNINGSET_QPS}}
 steps:
 {{if $WARM_UP_CLUSTER}}
 - name: Starting warming up pod measurements
@@ -86,6 +87,14 @@ steps:
       pollFrequency: "3s"
       hostPollTimeoutSeconds: 5
       threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
+  - Identifier: ContainerRestarts
+    Method: ContainerRestarts
+    Params:
+      action: start
+      container: kube-apiserver
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
   - Identifier: ContainerCPU
     Method: GenericPrometheusQuery
     Params:
@@ -147,13 +156,13 @@ steps:
     - namespaceRange:
         min: 1
         max: {{$namespaces}}
-      replicasPerNamespace: {{$TUNINGSET_QPS}}
+      replicasPerNamespace: {{$CL2_TUNINGSET_QPS}}
       tuningSet: Uniform5qps
       objectBundle:
         - basename: listpods-deployment
           objectTemplatePath: {{$listpodsDeploymentSpec}}
           templateFillMap:
-            Replicas: {{$LISTPODS_COUNT}}
+            Replicas: {{$CL2_LISTPODS_PER_WORKLOAD}}
             Group: listpods
             CpuRequest: 1m
             MemoryRequest: 10M
@@ -188,13 +197,13 @@ steps:
   - namespaceRange:
       min: 1
       max: {{$namespaces}}
-    replicasPerNamespace: 1
+    replicasPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
     tuningSet: Uniform5qps
     objectBundle:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
       templateFillMap:
-        Replicas: {{$podsPerNamespace}}
+        Replicas: {{$CL2_PODS_PER_WORKLOAD}}
         Group: latency
         CpuRequest: {{$LATENCY_POD_CPU}}m
         MemoryRequest: {{$LATENCY_POD_MEMORY}}M
@@ -284,6 +293,14 @@ steps:
       pollFrequency: "3s"
       hostPollTimeoutSeconds: 3
       threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
+  - Identifier: ContainerRestarts
+    Method: ContainerRestarts
+    Params:
+      action: gather
+      container: kube-apiserver
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
   - Identifier: ContainerCPU
     Method: GenericPrometheusQuery
     Params:

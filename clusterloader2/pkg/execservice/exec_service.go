@@ -22,6 +22,7 @@ import (
 	"embed"
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -137,7 +138,13 @@ func TearDownExecService(f *framework.Framework) error {
 // RunCommand executes given command on a pod in cluster. Context is passed to the exec command.
 func RunCommand(ctx context.Context, pod *corev1.Pod, cmd string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	c := exec.CommandContext(ctx, "kubectl", "exec", fmt.Sprintf("--namespace=%v", pod.Namespace), pod.Name, "--", "/bin/sh", "-x", "-c", cmd)
+	kubeconfig := os.Getenv("CL2_KUBE_CONFIG")
+	var c *exec.Cmd
+	if kubeconfig == "" {
+		c = exec.CommandContext(ctx, "kubectl", "exec", fmt.Sprintf("--namespace=%v", pod.Namespace), pod.Name, "--", "/bin/sh", "-x", "-c", cmd)
+	} else {
+		c = exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfig, "exec", fmt.Sprintf("--namespace=%v", pod.Namespace), pod.Name, "--", "/bin/sh", "-x", "-c", cmd)
+	}
 	c.Stdout, c.Stderr = &stdout, &stderr
 	if err := c.Run(); err != nil {
 		return stderr.String(), err

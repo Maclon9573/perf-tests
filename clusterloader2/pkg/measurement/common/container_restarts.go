@@ -77,7 +77,7 @@ func (a *containerRestartsGatherer) Gather(executor QueryExecutor, startTime, en
 		return nil, err
 	}
 
-	containerRestarts, err := a.gatherContainerRestarts(executor, startTime, endTime)
+	containerRestarts, err := a.gatherContainerRestarts(executor, config.Params, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
@@ -112,10 +112,20 @@ func (a *containerRestartsGatherer) getOverrides(config *measurement.Config) ([]
 	return restartCountOverrides, nil
 }
 
-func (a *containerRestartsGatherer) gatherContainerRestarts(executor QueryExecutor, startTime, endTime time.Time) ([]ContainerRestartsInfo, error) {
+func (a *containerRestartsGatherer) gatherContainerRestarts(executor QueryExecutor, params map[string]interface{}, startTime, endTime time.Time) ([]ContainerRestartsInfo, error) {
 	measurementDuration := endTime.Sub(startTime)
 	promDuration := measurementutil.ToPrometheusTime(measurementDuration)
-	query := fmt.Sprintf(containerRestartCountQuery, promDuration)
+	var query string
+	_, exists := params["container"]
+	if exists {
+		c, err := util.GetString(params, "container")
+		if err != nil {
+			return nil, err
+		}
+		query = fmt.Sprintf(`changes(container_start_time_seconds{container="%s"}[%v])`, c, promDuration)
+	} else {
+		query = fmt.Sprintf(containerRestartCountQuery, promDuration)
+	}
 	samples, err := executor.Query(query, endTime)
 	if err != nil {
 		return nil, err

@@ -13,8 +13,13 @@ spec:
        labels:
          feature: exec
     spec:
-      nodeSelector: # 使用kubemark选择节点
-        kubernetes.io/hostname: k8s-node1
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubemark
+                    operator: DoesNotExist
       containers:
       - name: agnhost
         image: e2eteam/agnhost:2.26

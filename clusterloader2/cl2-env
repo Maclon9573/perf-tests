@@ -1,0 +1,12 @@
+export CL2_APISERVER_PORT=6443
+export CL2_KUBE_CONFIG=${kubeconfig}
+
+export CL2_PROMETHEUS_TOLERATE_MASTER=true 	# 控制prometheus是否使用stroage class,true则不使用
+export PROMETHEUS_SCRAPE_KUBELETS=true
+
+export CL2_WORKLOAD_PER_NAMESPACE=${workload}
+export CL2_PODS_PER_WORKLOAD=${pods}
+
+export CL2_TUNINGSET_QPS=${qps} # 定义QPS和list pods每个命名空间的deployment数量
+export CL2_LISTPODS_PER_WORKLOAD=1
+export CL2_MAX_GET_PODS_COUNT=5

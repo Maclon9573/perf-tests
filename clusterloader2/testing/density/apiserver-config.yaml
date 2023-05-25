@@ -3,22 +3,23 @@
 {{$CL2_WORKLOAD_PER_NAMESPACE := DefaultParam .CL2_WORKLOAD_PER_NAMESPACE 1}}
 {{$CL2_PODS_PER_WORKLOAD := DefaultParam .CL2_PODS_PER_WORKLOAD 10}}
 {{$CL2_TUNINGSET_QPS := DefaultParam .CL2_TUNINGSET_QPS 5}}
+{{$CL2_LISTPODS_QPS := DefaultParam .CL2_LISTPODS_QPS 3}}
 {{$CL2_LISTPODS_PER_WORKLOAD := DefaultParam .CL2_LISTPODS_PER_WORKLOAD 1}}
+{{$CL2_LISTPODS_IMAGE:= DefaultParam .CL2_LISTPODS_IMAGE "maclonma/podslister:v1.0"}}
 {{$LISTPODS_Interval := DefaultParam .LISTPODS_Interval 5}}
 {{$MAX_GET_PODS_COUNT := DefaultParam .MAX_GET_PODS_COUNT 5}}
 {{$DENSITY_TEST_THROUGHPUT := DefaultParam .DENSITY_TEST_THROUGHPUT 5}}
 {{$SCHEDULER_THROUGHPUT_THRESHOLD := DefaultParam .CL2_SCHEDULER_THROUGHPUT_THRESHOLD 0}}
+{{$CL2_LATENCY_POD_IMAGE:= DefaultParam .CL2_LATENCY_POD_IMAGE "registry.aliyuncs.com/google_containers/pause:3.2"}}
 {{$LATENCY_POD_CPU := DefaultParam .LATENCY_POD_CPU 0.01}}
 {{$LATENCY_POD_MEMORY := DefaultParam .LATENCY_POD_MEMORY 0.03}}
-{{$KUBEMARK_HOLLOW_NODE_CPU := DefaultParam .LATENCY_POD_CPU 10}}
-{{$KUBEMARK_HOLLOW_NODE_MEMORY := DefaultParam .LATENCY_POD_MEMORY 30}}
 {{$MIN_LATENCY_PODS := 3}}
 {{$MIN_SATURATION_PODS_TIMEOUT := 60}}
 {{$CL2_ENABLE_KUBEMARK := DefaultParam .CL2_ENABLE_KUBEMARK false}}
 {{$CL2_KUBEMARK_NODE_COUNT:= DefaultParam .CL2_KUBEMARK_NODE_COUNT 1}}
 {{$USE_SIMPLE_LATENCY_QUERY := DefaultParam .USE_SIMPLE_LATENCY_QUERY false}}
 {{$WARM_UP_CLUSTER := DefaultParam .WARM_UP_CLUSTER false}}
-{{$ENABLE_RESTART_COUNT_CHECK := DefaultParam .ENABçLE_RESTART_COUNT_CHECK true}}
+{{$ENABLE_RESTART_COUNT_CHECK := DefaultParam .ENABLE_RESTART_COUNT_CHECK true}}
 {{$RESTART_COUNT_THRESHOLD_OVERRIDES:= DefaultParam .RESTART_COUNT_THRESHOLD_OVERRIDES ""}}
 #Variables
 {{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
@@ -37,9 +38,12 @@ name: kube-apiserver
 namespace:
   number: {{$namespaces}}
 tuningSets:
-- name: Uniform5qps
+- name: UniformQPS01
   qpsLoad:
     qps: {{$CL2_TUNINGSET_QPS}}
+- name: ListPodsQPS02
+  qpsLoad:
+    qps: {{$CL2_LISTPODS_QPS}}
 steps:
 {{if $WARM_UP_CLUSTER}}
 - name: Starting warming up pod measurements
@@ -59,7 +63,7 @@ steps:
       min: 1
       max: {{$warmUpNamespaces}}
     replicasPerNamespace: 1
-    tuningSet: Uniform5qps
+    tuningSet: UniformQPS01
     objectBundle:
     - basename: warmup-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
@@ -87,11 +91,27 @@ steps:
       pollFrequency: "3s"
       hostPollTimeoutSeconds: 5
       threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
-  - Identifier: ContainerRestarts
+  - Identifier: ContainerRestarts kube-apiserver
     Method: ContainerRestarts
     Params:
       action: start
       container: kube-apiserver
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+  - Identifier: ContainerRestarts kube-controller-manager
+    Method: ContainerRestarts
+    Params:
+      action: start
+      container: kube-controller-manager
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+  - Identifier: ContainerRestarts kube-scheduler
+    Method: ContainerRestarts
+    Params:
+      action: start
+      container: kube-scheduler
       enableViolations: true
       defaultAllowedRestarts: 1
       customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
@@ -156,14 +176,15 @@ steps:
     - namespaceRange:
         min: 1
         max: {{$namespaces}}
-      replicasPerNamespace: {{$CL2_TUNINGSET_QPS}}
-      tuningSet: Uniform5qps
+      replicasPerNamespace: {{$CL2_LISTPODS_QPS}}
+      tuningSet: ListPodsQPS02
       objectBundle:
         - basename: listpods-deployment
           objectTemplatePath: {{$listpodsDeploymentSpec}}
           templateFillMap:
             Replicas: {{$CL2_LISTPODS_PER_WORKLOAD}}
             Group: listpods
+            Image: {{$CL2_LISTPODS_IMAGE}}
             CpuRequest: 1m
             MemoryRequest: 10M
             MaxPodsCount: {{$MAX_GET_PODS_COUNT}}
@@ -176,29 +197,13 @@ steps:
       Params:
         action: gather
 
-#- name: Starting latency pod measurements
-#  measurements:
-#  - Identifier: PodStartupLatency
-#    Method: PodStartupLatency
-#    Params:
-#      action: start
-#      labelSelector: group = latency
-#  - Identifier: WaitForRunningLatencyDeployments
-#    Method: WaitForControlledPodsRunning
-#    Params:
-#      action: start
-#      apiVersion: apps/v1
-#      kind: Deployment
-#      labelSelector: group = latency
-#      operationTimeout: 15m
-
-- name: Creating latency pods
+- name: Creating latency pods round 1
   phases:
   - namespaceRange:
       min: 1
       max: {{$namespaces}}
     replicasPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
-    tuningSet: Uniform5qps
+    tuningSet: UniformQPS01
     objectBundle:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
@@ -208,37 +213,70 @@ steps:
         CpuRequest: {{$LATENCY_POD_CPU}}m
         MemoryRequest: {{$LATENCY_POD_MEMORY}}M
 
-#- name: Waiting for latency pods to be running
-#  measurements:
-#  - Identifier: WaitForRunningLatencyDeployments
-#    Method: WaitForControlledPodsRunning
-#    Params:
-#      action: gather
-
-- name: Deleting latency pods
+- name: Deleting latency pods round 1
   phases:
   - namespaceRange:
       min: 1
       max: {{$namespaces}}
     replicasPerNamespace: 0
-    tuningSet: Uniform5qps
+    tuningSet: UniformQPS01
     objectBundle:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
 
-#- name: Waiting for latency pods to be deleted
-#  measurements:
-#  - Identifier: WaitForRunningLatencyDeployments
-#    Method: WaitForControlledPodsRunning
-#    Params:
-#      action: gather
+- name: Creating latency pods round 2
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+    tuningSet: UniformQPS01
+    objectBundle:
+    - basename: latency-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+      templateFillMap:
+        Replicas: {{$CL2_PODS_PER_WORKLOAD}}
+        Group: latency
+        CpuRequest: {{$LATENCY_POD_CPU}}m
+        MemoryRequest: {{$LATENCY_POD_MEMORY}}M
 
-#- name: Collecting pod startup latency
-#  measurements:
-#  - Identifier: PodStartupLatency
-#    Method: PodStartupLatency
-#    Params:
-#      action: gather
+- name: Deleting latency pods round 2
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 0
+    tuningSet: UniformQPS01
+    objectBundle:
+    - basename: latency-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+
+- name: Creating latency pods round 3
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+    tuningSet: UniformQPS01
+    objectBundle:
+    - basename: latency-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
+      templateFillMap:
+        Replicas: {{$CL2_PODS_PER_WORKLOAD}}
+        Group: latency
+        CpuRequest: {{$LATENCY_POD_CPU}}m
+        MemoryRequest: {{$LATENCY_POD_MEMORY}}M
+
+- name: Deleting latency pods round 3
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: 0
+    tuningSet: UniformQPS01
+    objectBundle:
+    - basename: latency-deployment
+      objectTemplatePath: {{$latencyDeploymentSpec}}
 
 - name: Deleting list/get pods
   phases:
@@ -246,7 +284,7 @@ steps:
         min: 1
         max: {{$namespaces}}
       replicasPerNamespace: 0
-      tuningSet: Uniform5qps
+      tuningSet: UniformQPS01
       objectBundle:
         - basename: listpods-deployment
           objectTemplatePath: {{$listpodsDeploymentSpec}}
@@ -265,7 +303,7 @@ steps:
         min: 1
         max: {{$warmUpNamespaces}}
       replicasPerNamespace: 0
-      tuningSet: Uniform5qps
+      tuningSet: UniformQPS01
       objectBundle:
         - basename: warmup-deployment
           objectTemplatePath: {{$latencyDeploymentSpec}}
@@ -293,11 +331,27 @@ steps:
       pollFrequency: "3s"
       hostPollTimeoutSeconds: 3
       threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
-  - Identifier: ContainerRestarts
+  - Identifier: ContainerRestarts kube-apiserver
     Method: ContainerRestarts
     Params:
       action: gather
       container: kube-apiserver
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+  - Identifier: ContainerRestarts kube-controller-manager
+    Method: ContainerRestarts
+    Params:
+      action: gather
+      container: kube-controller-manager
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+  - Identifier: ContainerRestarts kube-scheduler
+    Method: ContainerRestarts
+    Params:
+      action: gather
+      container: kube-scheduler
       enableViolations: true
       defaultAllowedRestarts: 1
       customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}

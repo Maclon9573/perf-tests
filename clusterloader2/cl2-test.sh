@@ -1,12 +1,14 @@
 #!/bin/bash
 
+set -o nounset
+set -o pipefail
+
 # 定义默认参数
 testconfig=""
 provider=""
 kubeconfig=""
 schemes=(
-  "10 10 10"
-  "10 10 100"
+  "10 1 1"
 )
 qps=""
 report_dir=""
@@ -142,7 +144,6 @@ for ((i=0; i<${#schemes[@]}; i++)); do
 
     source ./cl2-env
     ./clusterloader2 \
-      --nodes=$nodes \
       --enable-prometheus-server=${enable_prometheus_server} \
       --prometheus-apiserver-scrape-port=$prometheus_apiserver_scrape_port \
       --tear-down-prometheus-server=$tear_down_prometheus_server \

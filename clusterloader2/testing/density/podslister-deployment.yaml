@@ -22,7 +22,7 @@ spec:
         - --workloadName={{.Name}}
         - --listInterval={{.ListInterval}}
         - --maxPodsCount={{.MaxPodsCount}}
-        image: maclonma/podslister:v1.0
+        image: {{.Image}}
         imagePullPolicy: IfNotPresent
         name: {{.Name}}
         ports:

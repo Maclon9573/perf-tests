@@ -18,7 +18,7 @@ spec:
 #      nodeSelector:
 #        app: nginx
       containers:
-      - image: registry.aliyuncs.com/google_containers/pause:3.2
+      - image: {{.Image}}
         imagePullPolicy: IfNotPresent
         name: {{.Name}}
         ports:

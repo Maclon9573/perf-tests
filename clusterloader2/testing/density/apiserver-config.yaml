@@ -25,7 +25,7 @@
 {{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
 {{$warmUpNamespaces := DivideInt $namespaces 10}}
 {{$warmPodsPerNamespace := 10}}
-
+{{$sleepDuration := "10s"}}
 {{$kubemarkReplicationControllerSpec := DefaultParam .KUBEMARK_ReplicationController_SPEC "kubemark-rc.yaml"}}
 {{$listpodsDeploymentSpec := DefaultParam .LISTPODS_DEPLOYMENT_SPEC "podslister-deployment.yaml"}}
 {{$latencyDeploymentSpec := DefaultParam .LATENCY_DEPLOYMENT_SPEC "deployment.yaml"}}
@@ -126,16 +126,16 @@ steps:
         - container
       queries:
         - name: max
-          query: max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:])
+          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:]))
           requireSamples: true
         - name: Perc99
-          query: quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:])
+          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
         - name: Perc90
-          query: quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:])
+          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
         - name: Perc50
-          query: quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:])
+          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
   - Identifier: ContainerMemory
     Method: GenericPrometheusQuery
@@ -148,16 +148,16 @@ steps:
         - container
       queries:
         - name: max
-          query: max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
+          query: max(max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])))
           requireSamples: true
         - name: Perc99
-          query: quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
+          query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
         - name: Perc90
-          query: quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
+          query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
         - name: Perc50
-          query: quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
+          query: max(quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
 
 - name: Starting list/get pod measurements
@@ -169,7 +169,7 @@ steps:
         apiVersion: apps/v1
         kind: Deployment
         labelSelector: group = listpods
-        operationTimeout: 15m
+        operationTimeout: 1m
 
 - name: Creating list/get pods
   phases:
@@ -185,8 +185,8 @@ steps:
             Replicas: {{$CL2_LISTPODS_PER_WORKLOAD}}
             Group: listpods
             Image: {{$CL2_LISTPODS_IMAGE}}
-            CpuRequest: 1m
-            MemoryRequest: 10M
+            CpuRequest: 10m
+            MemoryRequest: 64M
             MaxPodsCount: {{$MAX_GET_PODS_COUNT}}
             ListInterval: {{$LISTPODS_Interval}}
 
@@ -208,10 +208,18 @@ steps:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
       templateFillMap:
+        Image: {{$CL2_LATENCY_POD_IMAGE}}
         Replicas: {{$CL2_PODS_PER_WORKLOAD}}
         Group: latency
         CpuRequest: {{$LATENCY_POD_CPU}}m
         MemoryRequest: {{$LATENCY_POD_MEMORY}}M
+
+- name: Sleep
+  measurements:
+    - Identifier: sleep
+      Method: Sleep
+      Params:
+        duration: {{$sleepDuration}}
 
 - name: Deleting latency pods round 1
   phases:
@@ -224,6 +232,13 @@ steps:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
 
+- name: Sleep
+  measurements:
+    - Identifier: sleep
+      Method: Sleep
+      Params:
+        duration: {{$sleepDuration}}
+
 - name: Creating latency pods round 2
   phases:
   - namespaceRange:
@@ -235,10 +250,18 @@ steps:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
       templateFillMap:
+        Image: {{$CL2_LATENCY_POD_IMAGE}}
         Replicas: {{$CL2_PODS_PER_WORKLOAD}}
         Group: latency
         CpuRequest: {{$LATENCY_POD_CPU}}m
         MemoryRequest: {{$LATENCY_POD_MEMORY}}M
+
+- name: Sleep
+  measurements:
+    - Identifier: sleep
+      Method: Sleep
+      Params:
+        duration: {{$sleepDuration}}
 
 - name: Deleting latency pods round 2
   phases:
@@ -251,6 +274,13 @@ steps:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
 
+- name: Sleep
+  measurements:
+    - Identifier: sleep
+      Method: Sleep
+      Params:
+        duration: {{$sleepDuration}}
+
 - name: Creating latency pods round 3
   phases:
   - namespaceRange:
@@ -262,10 +292,18 @@ steps:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
       templateFillMap:
+        Image: {{$CL2_LATENCY_POD_IMAGE}}
         Replicas: {{$CL2_PODS_PER_WORKLOAD}}
         Group: latency
         CpuRequest: {{$LATENCY_POD_CPU}}m
         MemoryRequest: {{$LATENCY_POD_MEMORY}}M
+
+- name: Sleep
+  measurements:
+    - Identifier: sleep
+      Method: Sleep
+      Params:
+        duration: {{$sleepDuration}}
 
 - name: Deleting latency pods round 3
   phases:
@@ -277,6 +315,13 @@ steps:
     objectBundle:
     - basename: latency-deployment
       objectTemplatePath: {{$latencyDeploymentSpec}}
+
+- name: Sleep
+  measurements:
+    - Identifier: sleep
+      Method: Sleep
+      Params:
+        duration: {{$sleepDuration}}
 
 - name: Deleting list/get pods
   phases:
@@ -360,44 +405,44 @@ steps:
     Params:
       action: gather
       enableViolations: true
-      metricName: ContainerCPU
-      metricVersion: v1
-      unit: cores
-      dimensions:
-        - container
-      queries:
-        - name: max
-          query: max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:])
-          requireSamples: true
-        - name: Perc99
-          query: quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:])
-          requireSamples: true
-        - name: Perc90
-          query: quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:])
-          requireSamples: true
-        - name: Perc50
-          query: quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:])
-          requireSamples: true
+#      metricName: ContainerCPU
+#      metricVersion: v1
+#      unit: cores
+#      dimensions:
+#        - container
+#      queries:
+#        - name: max
+#          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:]))
+#          requireSamples: true
+#        - name: Perc99
+#          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+#          requireSamples: true
+#        - name: Perc90
+#          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+#          requireSamples: true
+#        - name: Perc50
+#          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+#          requireSamples: true
   - Identifier: ContainerMemory
     Method: GenericPrometheusQuery
     Params:
       action: gather
       enableViolations: true
-      metricName: ContainerMemory
-      metricVersion: v1
-      unit: MiB
-      dimensions:
-        - container
-      queries:
-        - name: max
-          query: max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
-          requireSamples: true
-        - name: Perc99
-          query: quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
-          requireSamples: true
-        - name: Perc90
-          query: quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
-          requireSamples: true
-        - name: Perc50
-          query: quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:])
-          requireSamples: true
+#      metricName: ContainerMemory
+#      metricVersion: v1
+#      unit: MiB
+#      dimensions:
+#        - container
+#      queries:
+#        - name: max
+#          query: max(max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+#          requireSamples: true
+#        - name: Perc99
+#          query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+#          requireSamples: true
+#        - name: Perc90
+#          query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+#          requireSamples: true
+#        - name: Perc50
+#          query: max(quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+#          requireSamples: true

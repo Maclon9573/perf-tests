@@ -23,3 +23,7 @@ spec:
       containers:
       - name: agnhost
         image: e2eteam/agnhost:2.26
+        resources:
+            limits:
+              cpu: 10m
+              memory: 50M

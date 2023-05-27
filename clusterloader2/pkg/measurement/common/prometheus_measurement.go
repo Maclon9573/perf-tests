@@ -61,7 +61,7 @@ func (m *prometheusMeasurement) Execute(config *measurement.Config) ([]measureme
 	if err != nil {
 		return nil, err
 	}
-	if prometheusClient != "inCluster" && prometheusClient != "managed" {
+	if prometheusClient != "inCluster" && prometheusClient != "managed" && prometheusClient != "external" {
 		return nil, fmt.Errorf("unknown Prometheus client")
 	}
 	if prometheusClient == "inCluster" && config.PrometheusFramework == nil {
@@ -98,6 +98,11 @@ func (m *prometheusMeasurement) Execute(config *measurement.Config) ([]measureme
 		switch prometheusClient {
 		case "inCluster":
 			pc = prom.NewInClusterPrometheusClient(config.PrometheusFramework.GetClientSets().GetClient())
+		case "external":
+			pc, err = prom.NewExternalPrometheusClient()
+			if err != nil {
+				return nil, fmt.Errorf("error while creating external Prometheus client: %w", err)
+			}
 		case "managed":
 			pc, err = config.CloudProvider.GetManagedPrometheusClient()
 			if err != nil {

@@ -15,8 +15,6 @@ spec:
         name: {{.Name}}
         group: {{.Group}}
     spec:
-#      nodeSelector:
-#        app: nginx
       containers:
       - image: {{.Image}}
         imagePullPolicy: IfNotPresent
@@ -24,6 +22,9 @@ spec:
         ports:
         resources:
           requests:
+            cpu: {{.CpuRequest}}
+            memory: {{.MemoryRequest}}
+          limits:
             cpu: {{.CpuRequest}}
             memory: {{.MemoryRequest}}
       # Add not-ready/unreachable tolerations for 15 minutes so that node

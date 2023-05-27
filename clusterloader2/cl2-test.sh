@@ -7,6 +7,7 @@ set -o pipefail
 testconfig=""
 provider=""
 kubeconfig=""
+## 方案集合,每个方案由3个数字组成,分别表示:节点数、每个节点workload数量、每个workload的pod数量
 schemes=(
   "10 1 1"
 )
@@ -96,6 +97,33 @@ if [ ! -f "./kubemark-rc.yaml" ]; then
   exit 1
 fi
 
+# 设置KUBECONFIG以执行kubectl
+export KUBECONFIG=$kubeconfig
+
+# 创建kubemark命名空间和secret
+if ! $(kubectl create ns kubemark 2&>/dev/null); then
+  echo 'namespaces kubemark already exists'
+else
+  echo 'created namespaces kubemark'
+fi
+
+if ! $(kubectl create secret generic kubeconfig --type=Opaque --namespace=kubemark \
+       --from-file=kubelet.kubeconfig=$kubeconfig --from-file=kubeproxy.kubeconfig=$kubeconfig 2&>/dev/null); then
+  echo 'secrets kubeconfig already exists'
+else
+  echo 'created secrets kubeconfig'
+fi
+
+# 创建listpods clusterRoleBinding
+if [ ! -f "./listpods-clusterrolebinding.yaml" ]; then
+  echo "listpods clusterRoleBinding文件不存在."
+  exit 1
+fi
+if ! $(kubectl apply -f listpods-clusterrolebinding.yaml 2&>/dev/null); then
+  echo 'listpods clusterRoleBinding already exists'
+else
+  echo 'created listpods clusterRoleBinding'
+fi
 
 # 遍历执行schemes
 MAX_TIMEOUT=900  # kubemark hollow nodes满足条件超时时间，以秒为单位
@@ -109,20 +137,20 @@ for ((i=0; i<${#schemes[@]}; i++)); do
     # 等待kubemark hollow nodes满足条件
     sed -i "" "/replicas/s/replicas.*/replicas: ${nodes}/" ./kubemark-rc.yaml 2&>/dev/null # Macos
     sed -i "/replicas/s/replicas.*/replicas: ${nodes}/" ./kubemark-rc.yaml 2&>/dev/null # Linux
-    kubectl apply -f ./kubemark-rc.yaml --kubeconfig $kubeconfig
+    kubectl apply -f ./kubemark-rc.yaml
     if [ $? -ne 0 ]; then
       echo "部署kubemark hollow nodes失败"
       exit 1
     fi
     start_time=$(date +%s)  # 记录开始时间的秒数
     while true; do
-      running_hollow_nodes=$(kubectl get nodes --kubeconfig $kubeconfig| grep "hollow-node" |grep -cw Ready)
+      running_hollow_nodes=$(kubectl get nodes| grep "hollow-node" |grep -cw Ready)
       end_time=$(date +%s)  # 记录结束时间的秒数
       execution_time=$((end_time - start_time))  # 计算命令执行时间
 
       if [ $running_hollow_nodes -eq $nodes ]; then
           echo "创建hollow nodes成功, hollow nodes数量${running_hollow_nodes}."
-          kubectl get nodes --kubeconfig $kubeconfig| grep NotReady |grep "hollow-node" |awk '{print $1}' |xargs kubectl delete nodes --kubeconfig $kubeconfig
+          kubectl get nodes| grep NotReady |grep "hollow-node" |awk '{print $1}' |xargs kubectl delete nodes
           break
       elif [ $execution_time -ge $MAX_TIMEOUT ]; then
           # 超过15分钟，退出循环
@@ -144,6 +172,7 @@ for ((i=0; i<${#schemes[@]}; i++)); do
 
     source ./cl2-env
     ./clusterloader2 \
+      --nodes=$nodes
       --enable-prometheus-server=${enable_prometheus_server} \
       --prometheus-apiserver-scrape-port=$prometheus_apiserver_scrape_port \
       --tear-down-prometheus-server=$tear_down_prometheus_server \
@@ -176,7 +205,10 @@ for ((i=0; i<${#schemes[@]}; i++)); do
       exit 1
     fi
 done
+
+# 删除listpods clusterRoleBinding
+kubectl delete -f listpods-clusterrolebinding.yaml
 # 删除kubemark hollow ndoes
 # kubectl delete rc -n kubemark hollow-node
 # 删除NotReady状态的hollow nodes
-kubectl get nodes --kubeconfig $kubeconfig| grep NotReady |grep "hollow-node" |awk '{print $1}' |xargs kubectl delete nodes --kubeconfig $kubeconfig 2&>/dev/null
+kubectl get nodes| grep NotReady |grep "hollow-node" |awk '{print $1}' |xargs kubectl delete nodes 2&>/dev/null

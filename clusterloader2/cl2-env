@@ -3,6 +3,8 @@ export CL2_KUBE_CONFIG=${kubeconfig}
 
 export CL2_PROMETHEUS_TOLERATE_MASTER=true 	# 控制prometheus是否使用stroage class,true则不使用
 export PROMETHEUS_SCRAPE_KUBELETS=true
+export EXTERNAL_PROMETHEUS_HOST=""
+export EXTERNAL_PROMETHEUS_REQUEST_HEADER=""
 
 export CL2_WORKLOAD_PER_NAMESPACE=${workload}
 export CL2_PODS_PER_WORKLOAD=${pods}

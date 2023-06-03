@@ -5,6 +5,7 @@ export CL2_PROMETHEUS_TOLERATE_MASTER=true 	# 控制prometheus是否使用stroag
 export PROMETHEUS_SCRAPE_KUBELETS=true
 export EXTERNAL_PROMETHEUS_HOST=""
 export EXTERNAL_PROMETHEUS_REQUEST_HEADER=""
+CL2_PROMETHEUS_CLIENT_TYPE="inCluster"  # 有inCluster,managed,external三种类型
 
 export CL2_WORKLOAD_PER_NAMESPACE=${workload}
 export CL2_PODS_PER_WORKLOAD=${pods}
@@ -13,3 +14,10 @@ export CL2_TUNINGSET_QPS=${qps}
 export CL2_LISTPODS_QPS=${qps}
 export CL2_LISTPODS_PER_WORKLOAD=1
 export CL2_MAX_GET_PODS_COUNT=5
+
+export LISTPODS_PATALLEL_WATCH_COUNT=5
+export LISTPODS_LW_INTERVAL=5
+export LISTPODS_WATCH_DURATION=5
+
+# etcd ssh user
+export KUBE_SSH_USER="root"

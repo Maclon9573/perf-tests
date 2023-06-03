@@ -1,0 +1,18 @@
+## Services module provides a module for creating / deleting services.
+
+## Input params
+{{$actionName := .actionName}}
+{{$namespaces := .namespaces}}
+{{$servicesPerNamespace := .servicesPerNamespace}}
+
+steps:
+- name: "{{$actionName}} k8s services"
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: {{$servicesPerNamespace}}
+    tuningSet: Sequence
+    objectBundle:
+    - basename: service
+      objectTemplatePath: service.yaml

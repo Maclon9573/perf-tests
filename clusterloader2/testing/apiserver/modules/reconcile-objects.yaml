@@ -1,0 +1,37 @@
+## Input params
+# Valid actions: "create", "scale and update", "delete"
+{{$actionName := printf "%s objects" .actionName}}
+{{$namespaces := .namespaces}}
+{{$tuningSet := .tuningSet}}
+
+# Derivative variables
+{{$is_deleting := (eq .actionName "delete")}}
+{{$operationTimeout := .operationTimeout}}
+
+# Deployments
+{{$deploymentSize := .deploymentSize}}
+{{$deploymentsPerNamespace := .deploymentsPerNamespace}}
+
+## CL2 params
+{{$CHECK_IF_PODS_ARE_UPDATED := DefaultParam .CL2_CHECK_IF_PODS_ARE_UPDATED true}}
+{{$DISABLE_DAEMONSETS := DefaultParam .CL2_DISABLE_DAEMONSETS true}}
+{{$ENABLE_DNSTESTS := DefaultParam .CL2_ENABLE_DNSTESTS false}}
+{{$ENABLE_NETWORKPOLICIES := DefaultParam .CL2_ENABLE_NETWORKPOLICIES false}}
+{{$ENABLE_PVS := DefaultParam .CL2_ENABLE_PVS false}}
+
+steps:
+- name: {{$actionName}}
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: {{$deploymentsPerNamespace}}
+    tuningSet: {{$tuningSet}}
+    objectBundle:
+    - basename: deployment
+      objectTemplatePath: deployment.yaml
+      templateFillMap:
+        # DNS Test clients are enabled only in the medium-size deployment.
+        EnableDNSTests: false
+        Replicas: {{$deploymentSize}}
+        SvcName: service

@@ -122,7 +122,7 @@ func (a *containerRestartsGatherer) gatherContainerRestarts(executor QueryExecut
 		if err != nil {
 			return nil, err
 		}
-		query = fmt.Sprintf(`changes(container_start_time_seconds{container="%s"}[%v])`, c, promDuration)
+		query = fmt.Sprintf(`changes(container_start_time_seconds{container=~"%s"}[%v])`, c, promDuration)
 	} else {
 		query = fmt.Sprintf(containerRestartCountQuery, promDuration)
 	}

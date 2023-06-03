@@ -34,7 +34,7 @@ type externalPrometheusClient struct {
 var _ Client = &externalPrometheusClient{}
 
 func (c *externalPrometheusClient) Query(query string, queryTime time.Time) ([]byte, error) {
-	var params url.Values
+	params := url.Values{}
 	params.Add("query", query)
 	params.Add("time", queryTime.Format(time.RFC3339))
 	c.req.URL.RawQuery = params.Encode()
@@ -58,27 +58,29 @@ func (c *externalPrometheusClient) Query(query string, queryTime time.Time) ([]b
 func NewExternalPrometheusClient() (Client, error) {
 	prometheusHost := os.Getenv("EXTERNAL_PROMETHEUS_HOST")
 	prometheusRequestHeader := os.Getenv("EXTERNAL_PROMETHEUS_REQUEST_HEADER")
-	if prometheusHost == "" || prometheusRequestHeader == "" {
-		return nil, fmt.Errorf("external prometheus host or header is not set")
+	if prometheusHost == "" {
+		return nil, fmt.Errorf("prometheus host is not set")
 	}
+
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", prometheusHost, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	headers := strings.Split(prometheusRequestHeader, ";")
-	for _, header := range headers {
-		kv := strings.Split(header, ":")
-		if len(kv) != 2 {
-			return nil, fmt.Errorf("the format of external prometheus header is wrong")
+	if prometheusRequestHeader != "" {
+		headers := strings.Split(prometheusRequestHeader, ";")
+		for _, header := range headers {
+			kv := strings.Split(header, ":")
+			if len(kv) != 2 {
+				return nil, fmt.Errorf("the format of external prometheus header is wrong")
+			}
+			req.Header.Set(kv[0], strings.TrimSpace(kv[1]))
 		}
-		req.Header.Set(kv[0], strings.TrimSpace(kv[1]))
 	}
 
 	return &externalPrometheusClient{
 		client: client,
 		req:    req,
 	}, nil
-
 }

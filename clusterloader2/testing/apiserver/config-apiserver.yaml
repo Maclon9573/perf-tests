@@ -1,0 +1,182 @@
+{{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 1)}}
+{{$CL2_TUNINGSET_QPS := DefaultParam .CL2_TUNINGSET_QPS 10}}
+
+
+{{$REAL_NODE_COUNT := DefaultParam .CL2_REAL_NODE_COUNT 3}}
+{{$CL2_LISTPODS_WORKLOAD := DefaultParam .CL2_LISTPODS_WORKLOAD 3}}
+{{$CL2_LISTPODS_PER_WORKLOAD := DefaultParam .CL2_LISTPODS_PER_WORKLOAD 1}}
+{{$CL2_LISTPODS_IMAGE:= DefaultParam .CL2_LISTPODS_IMAGE "maclonma/pods-lister-watcher:v3"}}
+{{$LISTPODS_PATALLEL_WATCH_COUNT := DefaultParam .CL2_LISTPODS_PATALLEL_WATCH_COUNT 5}}
+{{$LISTPODS_LW_INTERVAL := DefaultParam .CL2_LISTPODS_LW_INTERVAL 5}}
+{{$LISTPODS_WATCH_DURATION := DefaultParam .CL2_LISTPODS_WATCH_DURATION 5}}
+{{$DENSITY_TEST_THROUGHPUT := DefaultParam .DENSITY_TEST_THROUGHPUT 10}}
+{{$DELETE_TEST_THROUGHPUT := DefaultParam .CL2_DELETE_TEST_THROUGHPUT $DENSITY_TEST_THROUGHPUT}}
+
+{{$WARMUP_POD_CPU := DefaultParam .WARMUP_POD_CPU 0.01}}
+{{$WARMUP_POD_MEMORY := DefaultParam .WARMUP_POD_MEMORY 0.04}}
+{{$WARM_UP_CLUSTER := DefaultParam .CL2_WARM_UP_CLUSTER true}}
+{{$WARM_UP_WORKLOAD_PER_NAMESPACE := DefaultParam .CL2_WARM_UP_WORKLOAD_PER_NAMESPACE 10}}
+{{$WARM_UP_PODS_PER_WORKLOAD := DefaultParam .CL2_WARM_UP_PODS_PER_WORKLOAD 10}}
+{{$SLEEP_DURATION :=  DefaultParam .CL2_SLEEP_DURATION "3m"}}
+
+
+#Variables
+{{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
+{{$listpodsDeploymentSpec := DefaultParam .LISTPODS_DEPLOYMENT_SPEC "podslister-deployment.yaml"}}
+{{$warmupDeploymentSpec := DefaultParam .WARMUP_DEPLOYMENT_SPEC "deployment.yaml"}}
+
+
+
+name: apiserver
+namespace:
+  number: {{$namespaces}}
+tuningSets:
+- name: Sequence
+  parallelismLimitedLoad:
+    parallelismLimit: 1
+- name: Uniform5qps
+  qpsLoad:
+    qps: 5
+- name: default
+  globalQPSLoad:
+    qps: {{$CL2_TUNINGSET_QPS}}
+    burst: 1
+- name: RandomizedSaturationTimeLimited
+  RandomizedTimeLimitedLoad:
+    timeLimit: 10s
+- name: RandomizedScalingTimeLimited
+  RandomizedTimeLimitedLoad:
+    timeLimit: 10s
+- name: RandomizedDeletionTimeLimited
+  RandomizedTimeLimitedLoad:
+    timeLimit: 10s
+- name: ListPodsQPS02
+  qpsLoad:
+    qps: {{$CL2_LISTPODS_WORKLOAD}}
+    
+    
+steps:
+{{if $WARM_UP_CLUSTER}}
+#- name: Starting warming up pod measurements
+#  measurements:
+#  - Identifier: WaitForRunningWarnUpDeployments
+#    Method: WaitForControlledPodsRunning
+#    Params:
+#      action: start
+#      apiVersion: apps/v1
+#      kind: Deployment
+#      labelSelector: group = warmup
+#      operationTimeout: 15m
+
+- name: Creating warming up pods
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: {{$WARM_UP_WORKLOAD_PER_NAMESPACE}}
+    tuningSet: default
+    objectBundle:
+    - basename: warmup-deployment
+      objectTemplatePath: {{$warmupDeploymentSpec}}
+      templateFillMap:
+        Replicas: {{$WARM_UP_PODS_PER_WORKLOAD}}
+        Group: warmup
+        CpuRequest: {{$WARMUP_POD_CPU}}m
+        MemoryRequest: {{$WARMUP_POD_MEMORY}}M
+{{end}}
+
+- module:
+    path: /modules/measurements.yaml
+    params:
+      action: start
+
+- module:
+    path: modules/serviceaccounts.yaml
+    params:
+      actionName: "Creating"
+      namespaces: {{$REAL_NODE_COUNT}}
+      serviceaccountsPerNamespace: {{$CL2_LISTPODS_WORKLOAD}}
+
+- name: Starting list/watch pods measurements
+  measurements:
+    - Identifier: WaitForRunningListpodsDeployments
+      Method: WaitForControlledPodsRunning
+      Params:
+        action: start
+        prometheusClient: external
+        apiVersion: apps/v1
+        kind: Deployment
+        labelSelector: group = listpods
+        operationTimeout: 15m
+
+- name: Creating list/watch pods
+  phases:
+    - namespaceRange:
+        min: 1
+        max: {{$REAL_NODE_COUNT}}
+      replicasPerNamespace: {{$CL2_LISTPODS_WORKLOAD}}
+      tuningSet: ListPodsQPS02
+      objectBundle:
+        - basename: listpods-deployment
+          objectTemplatePath: {{$listpodsDeploymentSpec}}
+          templateFillMap:
+            Replicas: {{$CL2_LISTPODS_PER_WORKLOAD}}
+            Group: listpods
+            Image: {{$CL2_LISTPODS_IMAGE}}
+            CpuRequest: 10m
+            MemoryRequest: 64M
+            ParallelWatchCount: {{$LISTPODS_PATALLEL_WATCH_COUNT}}
+            LwInterval: {{$LISTPODS_LW_INTERVAL}}
+            WatchDuration: {{$LISTPODS_WATCH_DURATION}}
+            Serviceaccount: serviceaccount
+
+- name: Waiting for list/watch pods to be running
+  measurements:
+    - Identifier: WaitForRunningListpodsDeployments
+      Method: WaitForControlledPodsRunning
+      Params:
+        action: gather
+
+- name: Listing and watching
+  measurements:
+  - Identifier: Wait
+    Method: Sleep
+    Params:
+      duration: {{$SLEEP_DURATION}}
+
+{{if $WARM_UP_CLUSTER}}
+- name: Deleting warming up pods
+  phases:
+    - namespaceRange:
+        min: 1
+        max: {{$namespaces}}
+      replicasPerNamespace: 0
+      tuningSet: default
+      objectBundle:
+        - basename: warmup-deployment
+          objectTemplatePath: {{$warmupDeploymentSpec}}
+{{end}}
+
+- name: Deleting list/watch pods
+  phases:
+    - namespaceRange:
+        min: 1
+        max: {{$namespaces}}
+      replicasPerNamespace: 0
+      tuningSet: default
+      objectBundle:
+        - basename: listpods-deployment
+          objectTemplatePath: {{$listpodsDeploymentSpec}}
+
+- name: Waiting for list/watch pods to be deleted
+  measurements:
+    - Identifier: WaitForRunningListpodsDeployments
+      Method: WaitForControlledPodsRunning
+      Params:
+        action: gather
+
+
+- module:
+    path: /modules/measurements.yaml
+    params:
+      action: gather

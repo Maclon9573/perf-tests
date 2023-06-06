@@ -23,6 +23,7 @@ spec:
       containers:
       - name: agnhost
         image: e2eteam/agnhost:2.26
+        imagePullPolicy: IfNotPresent
         resources:
             limits:
               cpu: 10m

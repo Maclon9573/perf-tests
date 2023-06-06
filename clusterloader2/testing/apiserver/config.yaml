@@ -22,7 +22,7 @@
 {{$CL2_ENABLE_KUBEMARK := DefaultParam .CL2_ENABLE_KUBEMARK false}}
 {{$CL2_KUBEMARK_NODE_COUNT:= DefaultParam .CL2_KUBEMARK_NODE_COUNT 1}}
 {{$USE_SIMPLE_LATENCY_QUERY := DefaultParam .USE_SIMPLE_LATENCY_QUERY false}}
-{{$WARM_UP_CLUSTER := DefaultParam .WARM_UP_CLUSTER false}}
+{{$WARM_UP_CLUSTER := DefaultParam .WARM_UP_CLUSTER true}}
 {{$ENABLE_RESTART_COUNT_CHECK := DefaultParam .ENABLE_RESTART_COUNT_CHECK true}}
 {{$RESTART_COUNT_THRESHOLD_OVERRIDES:= DefaultParam .RESTART_COUNT_THRESHOLD_OVERRIDES ""}}
 {{$ENABLE_API_AVAILABILITY_MEASUREMENT := DefaultParam .CL2_ENABLE_API_AVAILABILITY_MEASUREMENT false}}
@@ -50,12 +50,9 @@ tuningSets:
 - name: Sequence
   parallelismLimitedLoad:
     parallelismLimit: 1
-# TODO(https://github.com/kubernetes/perf-tests/issues/1024): This TuningSet is used only for pod-startup-latency, get rid of it
-# Uniform5qps: for each running phase, use 5 qps.
 - name: Uniform5qps
   qpsLoad:
     qps: 5
-# default is a tuningset that is meant to be used when we don't have any specific requirements on pace of operations.
 - name: default
   globalQPSLoad:
     qps: {{$CL2_TUNINGSET_QPS}}
@@ -65,9 +62,6 @@ tuningSets:
     timeLimit: 10s
 - name: RandomizedScalingTimeLimited
   RandomizedTimeLimitedLoad:
-    # The expected number of created/deleted pods is totalPods/4 when scaling,
-    # as each RS changes its size from X to a uniform random value in [X/2, 3X/2].
-    # To match 10 [pods/s] requirement, we need to divide saturationTime by 4.
     timeLimit: 10s
 - name: RandomizedDeletionTimeLimited
   RandomizedTimeLimitedLoad:
@@ -79,16 +73,16 @@ tuningSets:
     
 steps:
 {{if $WARM_UP_CLUSTER}}
-- name: Starting warming up pod measurements
-  measurements:
-  - Identifier: WaitForRunningWarnUpDeployments
-    Method: WaitForControlledPodsRunning
-    Params:
-      action: start
-      apiVersion: apps/v1
-      kind: Deployment
-      labelSelector: group = warmup
-      operationTimeout: 15m
+#- name: Starting warming up pod measurements
+#  measurements:
+#  - Identifier: WaitForRunningWarnUpDeployments
+#    Method: WaitForControlledPodsRunning
+#    Params:
+#      action: start
+#      apiVersion: apps/v1
+#      kind: Deployment
+#      labelSelector: group = warmup
+#      operationTimeout: 15m
 
 - name: Creating warming up pods
   phases:
@@ -102,7 +96,7 @@ steps:
       objectTemplatePath: {{$latencyDeploymentSpec}}
       templateFillMap:
         Replicas: {{$warmPodsPerNamespace}}
-        Group: latency
+        Group: warmup
         CpuRequest: {{$LATENCY_POD_CPU}}m
         MemoryRequest: {{$LATENCY_POD_MEMORY}}M
 {{end}}

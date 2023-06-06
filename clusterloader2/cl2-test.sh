@@ -7,9 +7,15 @@ set -o pipefail
 testconfig=""
 provider=""
 kubeconfig=""
-## 方案集合,每个方案由3个数字组成,分别表示:节点数(kubemark)、每个节点workload数量、每个workload的pod数量;如果不使用kubemark,节点数设为0
+## 方案集合,每个方案由6个数字组成,分别表示:
+# 1.节点数(kubemark)
+# 2.每个节点workload数量
+# 3.每个workload的pod数量;如果不使用kubemark,节点数设为0
+# 4.每个真实节点的listpod workload数量
+# 5.每个workload的listpod数量
+# 6.每个listpod并发数量
 schemes=(
-  "0 1 1"
+  "15 20 20 20 1 10"
 )
 qps=""
 report_dir=""
@@ -18,6 +24,7 @@ prometheus_apiserver_scrape_port="6443"
 prometheus_storage_class_provisioner=""
 prometheus_pvc_storage_class=""
 tear_down_prometheus_server="false"
+enable_kubemark="true"
 
 print_line() {
    echo "--------------------------------------------------------------------------------"
@@ -67,6 +74,10 @@ while [[ $# -gt 0 ]]; do
       report_dir="$2"
       shift
       ;;
+    --enable-kubemark)
+          enable_kubemark="$2"
+          shift
+          ;;
     *)
       # 对于未知的选项或参数进行其他处理，如果需要的话
       echo "未知选项或参数: $key"
@@ -91,10 +102,12 @@ echo "是否启用 Prometheus 服务: $enable_prometheus_server"
 echo "报告目录: $report_dir"
 print_line
 
-# 检查kubemark yaml文件是否存在
-if [ ! -f "./kubemark-rc.yaml" ]; then
-  echo "kubemark部署文件不存在."
-  exit 1
+if [ $enable_kubemark = "true" ]; then
+    # 检查kubemark yaml文件是否存在
+    if [ ! -f "./kubemark-rc.yaml" ]; then
+      echo "kubemark部署文件不存在."
+      exit 1
+    fi
 fi
 
 # 设置KUBECONFIG以执行kubectl
@@ -125,6 +138,9 @@ else
   echo 'created listpods clusterRoleBinding'
 fi
 
+# 获取非kubemark节点数
+real_nodes_count=$(kubectl get nodes |grep -w Ready |grep -v hollow| wc -l |sed 's/ //g')
+
 # 遍历执行schemes
 MAX_TIMEOUT=900  # kubemark hollow nodes满足条件超时时间，以秒为单位
 index=1
@@ -133,6 +149,9 @@ for ((i=0; i<${#schemes[@]}; i++)); do
     nodes=${values[0]}
     workload=${values[1]}
     pods=${values[2]}
+    listpods_workload=${values[3]}
+    listpods=${values[4]}
+    listpods_concurrency=${values[5]}
 
     # 等待kubemark hollow nodes满足条件
     sed -i "" "/replicas/s/replicas.*/replicas: ${nodes}/" ./kubemark-rc.yaml 2&>/dev/null # Macos
@@ -167,11 +186,12 @@ for ((i=0; i<${#schemes[@]}; i++)); do
     current_date=$(date +"%Y-%m-%d-%H:%M:%S")
     echo "开始第${index}次测试,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 当前时间$current_date"
     # 在report_dir中创建子目录
-    new_report_dir="${report_dir}/result_${nodes}_${workload}_${pods}-${current_date}"
+    new_report_dir="${report_dir}/result_${nodes}_${workload}_${pods}_${listpods_workload}_${listpods}_${listpods_concurrency}-${current_date}"
     mkdir -p "${new_report_dir}"
 
     source ./cl2-env
     ./clusterloader2 \
+      --nodes=$nodes \
       --enable-prometheus-server=${enable_prometheus_server} \
       --prometheus-apiserver-scrape-port=$prometheus_apiserver_scrape_port \
       --tear-down-prometheus-server=$tear_down_prometheus_server \

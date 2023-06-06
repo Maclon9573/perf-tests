@@ -4,7 +4,7 @@ metadata:
   name: hollow-node
   namespace: kubemark
 spec:
-  replicas: 10
+  replicas: 15
   selector:
     kubemark: hollow-node
   template:
@@ -15,6 +15,7 @@ spec:
       initContainers:
         - name: init-inotify-limit
           image: docker.io/busybox:latest
+          imagePullPolicy: IfNotPresent
           command: ['sysctl', '-w', 'fs.inotify.max_user_instances=200']
           securityContext:
             privileged: true
@@ -28,6 +29,7 @@ spec:
       containers:
         - name: hollow-kubelet
           image: maclonma/kubemark:v1.20
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4194
             - containerPort: 10250
@@ -54,15 +56,16 @@ spec:
               mountPath: /var/log
           resources:
             requests:
-              cpu: 20m
-              memory: 50M
+              cpu: 200m
+              memory: 100M
             limits:
-              cpu: 20m
-              memory: 50M
+              cpu: 200m
+              memory: 100M
           securityContext:
             privileged: true
         - name: hollow-proxy
           image: maclonma/kubemark:v1.20
+          imagePullPolicy: IfNotPresent
           env:
             - name: NODE_NAME
               valueFrom:
@@ -86,11 +89,11 @@ spec:
               mountPath: /var/log
           resources:
             requests:
-              cpu: 20m
-              memory: 50M
+              cpu: 200m
+              memory: 100M
             limits:
-              cpu: 20m
-              memory: 50M
+              cpu: 200m
+              memory: 100M
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

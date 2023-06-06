@@ -1,23 +1,31 @@
 export CL2_APISERVER_PORT=6443
 export CL2_KUBE_CONFIG=${kubeconfig}
 
+export CL2_WORKLOAD_PER_NAMESPACE=${workload}
+export CL2_PODS_PER_WORKLOAD=${pods}
+export CL2_TUNINGSET_QPS=${qps}
+
+# prometheus
 export CL2_PROMETHEUS_TOLERATE_MASTER=true 	# 控制prometheus是否使用stroage class,true则不使用
 export PROMETHEUS_SCRAPE_KUBELETS=true
 export EXTERNAL_PROMETHEUS_HOST=""
 export EXTERNAL_PROMETHEUS_REQUEST_HEADER=""
-CL2_PROMETHEUS_CLIENT_TYPE="inCluster"  # 有inCluster,managed,external三种类型
+export CL2_PROMETHEUS_CLIENT_TYPE="inCluster"  # 有inCluster,managed,external三种类型
 
-export CL2_WORKLOAD_PER_NAMESPACE=${workload}
-export CL2_PODS_PER_WORKLOAD=${pods}
 
-export CL2_TUNINGSET_QPS=${qps}
-export CL2_LISTPODS_QPS=${qps}
-export CL2_LISTPODS_PER_WORKLOAD=1
-export CL2_MAX_GET_PODS_COUNT=5
+# warm up pods
+export CL2_WARM_UP_CLUSTER=true
+export CL2_WARM_UP_WORKLOAD_PER_NAMESPACE=${workload}
+export CL2_WARM_UP_PODS_PER_WORKLOAD=${pods}
 
-export LISTPODS_PATALLEL_WATCH_COUNT=5
-export LISTPODS_LW_INTERVAL=5
-export LISTPODS_WATCH_DURATION=5
+# list watch pods
+export CL2_REAL_NODE_COUNT=$real_nodes_count
+export CL2_LISTPODS_WORKLOAD=$listpods_workload  # list pods deployment数量
+export CL2_LISTPODS_PER_WORKLOAD=$listpods
+export CL2_LISTPODS_PATALLEL_WATCH_COUNT=$listpods_concurrency
+export CL2_LISTPODS_LW_INTERVAL=11
+export CL2_LISTPODS_WATCH_DURATION=10
+export CL2_SLEEP_DURATION=1m
 
 # etcd ssh user
 export KUBE_SSH_USER="root"

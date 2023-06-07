@@ -187,7 +187,6 @@ func (g *genericQueryGatherer) String() string {
 }
 
 func (g *genericQueryGatherer) query(q GenericQuery, executor QueryExecutor, startTime, endTime time.Time) ([]*model.Sample, error) {
-	klog.Infof("startTime: %v, endTime: %v................", startTime, endTime)
 	duration := endTime.Sub(startTime)
 	// Replace all provided duration placeholders (%v) with the test duration.
 	boundedQuery := strings.ReplaceAll(q.Query, "%v", measurementutil.ToPrometheusTime(duration))

@@ -78,11 +78,11 @@ steps:
         - name: max
           query: max(max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
-          threshold: $memThreshold
+          threshold: {{$memThreshold}}
         - name: Perc99
           query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
-          threshold: $memThreshold
+          threshold: {{$memThreshold}}
         - name: Perc90
           query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true

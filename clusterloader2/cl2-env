@@ -12,6 +12,8 @@ export EXTERNAL_PROMETHEUS_HOST=""
 export EXTERNAL_PROMETHEUS_REQUEST_HEADER=""
 export CL2_PROMETHEUS_CLIENT_TYPE="inCluster"  # 有inCluster,managed,external三种类型
 
+# master memory
+export CL2_MASTER_NODE_MEM=$master_memory
 
 # warm up pods
 export CL2_WARM_UP_CLUSTER=true
@@ -25,7 +27,7 @@ export CL2_LISTPODS_PER_WORKLOAD=$listpods
 export CL2_LISTPODS_PATALLEL_WATCH_COUNT=$listpods_concurrency
 export CL2_LISTPODS_LW_INTERVAL=11
 export CL2_LISTPODS_WATCH_DURATION=10
-export CL2_SLEEP_DURATION=1m
+export CL2_SLEEP_DURATION=30s
 
 # etcd ssh user
 export KUBE_SSH_USER="root"

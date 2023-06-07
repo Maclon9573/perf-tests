@@ -164,6 +164,7 @@ func (g *genericQueryGatherer) Gather(executor QueryExecutor, startTime, endTime
 			thresholdMsg := "none"
 			if q.Threshold != nil {
 				thresholdMsg = fmt.Sprintf("%v", *q.Threshold)
+				klog.Infof("q.Threshold: %v.......................................", *q.Threshold)
 			}
 			klog.V(2).Infof("metric: %v: %v, value: %v, threshold: %v", g.MetricName, q.Name, val, thresholdMsg)
 			if q.Threshold != nil && val > *q.Threshold {
@@ -186,6 +187,7 @@ func (g *genericQueryGatherer) String() string {
 }
 
 func (g *genericQueryGatherer) query(q GenericQuery, executor QueryExecutor, startTime, endTime time.Time) ([]*model.Sample, error) {
+	klog.Infof("startTime: %v, endTime: %v................", startTime, endTime)
 	duration := endTime.Sub(startTime)
 	// Replace all provided duration placeholders (%v) with the test duration.
 	boundedQuery := strings.ReplaceAll(q.Query, "%v", measurementutil.ToPrometheusTime(duration))

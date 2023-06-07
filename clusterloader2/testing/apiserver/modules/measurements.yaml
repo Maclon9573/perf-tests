@@ -16,10 +16,10 @@
 {{$CUSTOM_ALLOWED_CONTAINER_RESTARTS := DefaultParam .CL2_CUSTOM_ALLOWED_CONTAINER_RESTARTS ""}}
 {{$USE_SIMPLE_LATENCY_QUERY := DefaultParam .USE_SIMPLE_LATENCY_QUERY false}}
 {{$PROMETHEUS_CLIENT_TYPE := DefaultParam .CL2_PROMETHEUS_CLIENT_TYPE "inCluster"}}
+{{$MASTER_NODE_MEM := DefaultParam .CL2_MASTER_NODE_MEM 32787260}}
+{{$memThreshold := DivideFloat (MultiplyFloat $MASTER_NODE_MEM 0.8) 1024}}
 
-  
-# Probe measurements shared parameter
-{{$PROBE_MEASUREMENTS_CHECK_PROBES_READY_TIMEOUT := DefaultParam .CL2_PROBE_MEASUREMENTS_CHECK_PROBES_READY_TIMEOUT "15m"}}
+
 
 steps:
 - name: "{{$action}}ing measurements"
@@ -63,30 +63,6 @@ steps:
       prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
 {{end}}
 {{if $ENABLE_CONTAINER_RESOURCES_MEASUREMENT}}
-#  - Identifier: ApiserverContainerCPU
-#    Method: GenericPrometheusQuery
-#    Params:
-#      action: {{$action}}
-#      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
-#      enableViolations: true
-#      metricName: ApiserverContainerCPU
-#      metricVersion: v1
-#      unit: cores
-#      dimensions:
-#        - container
-#      queries:
-#        - name: max
-#          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:]))
-#          requireSamples: true
-#        - name: Perc99
-#          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
-#          requireSamples: true
-#        - name: Perc90
-#          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
-#          requireSamples: true
-#        - name: Perc50
-#          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
-#          requireSamples: true
   - Identifier: ApiserverContainerMemory
     Method: GenericPrometheusQuery
     Params:
@@ -102,9 +78,11 @@ steps:
         - name: max
           query: max(max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
+          threshold: $memThreshold
         - name: Perc99
           query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
+          threshold: $memThreshold
         - name: Perc90
           query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true

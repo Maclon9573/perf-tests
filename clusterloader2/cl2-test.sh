@@ -15,7 +15,7 @@ kubeconfig=""
 # 5.每个workload的listpod数量
 # 6.每个listpod并发数量
 schemes=(
-  "15 20 20 20 1 10"
+  "5 1 1 1 1 1"
 )
 qps=""
 report_dir=""
@@ -138,8 +138,17 @@ else
   echo 'created listpods clusterRoleBinding'
 fi
 
-# 获取非kubemark节点数
-real_nodes_count=$(kubectl get nodes |grep -w Ready |grep -v hollow| wc -l |sed 's/ //g')
+# 获取非kubemark节点数,并过滤掉master节点
+real_nodes_count=$(kubectl get nodes |grep -w Ready |grep -Ev 'hollow|master|control-plane'| wc -l |sed 's/ //g')
+
+# 获取master节点memory
+master_name=$(kubectl get nodes |awk '/control-plane/,/master/ {print $1}'|head -1)
+if $(kubectl describe nodes $master_name |awk '/memory:/ {print $2}'|tail -1|grep -q Ki); then
+  master_memory=$(kubectl describe nodes $master_name |awk '/memory:/ {print $2}' |tail -1 |sed 's/Ki//')
+else
+  echo '获取master memory失败'
+  exit 1
+fi
 
 # 遍历执行schemes
 MAX_TIMEOUT=900  # kubemark hollow nodes满足条件超时时间，以秒为单位

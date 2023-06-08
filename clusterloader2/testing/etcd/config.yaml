@@ -1,0 +1,93 @@
+{{$NODES_PER_NAMESPACE := MinInt .Nodes (DefaultParam .NODES_PER_NAMESPACE 1)}}
+{{$CL2_TUNINGSET_QPS := DefaultParam .CL2_TUNINGSET_QPS 10}}
+
+{{$CL2_WORKLOAD_PER_NAMESPACE := DefaultParam .CL2_WORKLOAD_PER_NAMESPACE 50}}
+{{$CL2_PODS_PER_WORKLOAD := DefaultParam .CL2_PODS_PER_WORKLOAD 1}}
+
+{{$POD_CPU := DefaultParam .POD_CPU 10}}
+{{$POD_MEMORY := DefaultParam .POD_MEMORY 40}}
+{{$SLEEP_DURATION :=  DefaultParam .CL2_SLEEP_DURATION "3m"}}
+
+#Variables
+{{$namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE}}
+{{$defaultQps := $CL2_TUNINGSET_QPS}}
+
+name: etcd
+namespace:
+  number: {{$namespaces}}
+tuningSets:
+- name: default
+  globalQPSLoad:
+    qps: {{$defaultQps}}
+    burst: 1
+steps:
+- module:
+    path: /modules/measurements.yaml
+    params:
+      action: start
+
+- module:
+    path: /modules/configmaps-secrets.yaml
+    params:
+      actionName: create
+      tuningSet: default
+      namespaces: {{$namespaces}}
+      deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "create"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+
+#- name: Listing and watching
+#  measurements:
+#    - Identifier: Wait
+#      Method: Sleep
+#      Params:
+#        duration: 1m
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "scale and update"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "delete"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: 0
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+
+- module:
+    path: /modules/configmaps-secrets.yaml
+    params:
+      actionName: delete
+      tuningSet: default
+      namespaces: {{$namespaces}}
+      deploymentsPerNamespace: 0
+      mediumDeploymentsPerNamespace: 0
+      smallDeploymentsPerNamespace: 0
+
+- module:
+    path: /modules/measurements.yaml
+    params:
+      action: gather

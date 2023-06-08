@@ -1,0 +1,171 @@
+## Input params
+# Valid actions: "start", "gather"
+{{$action := .action}}
+
+## Feature-gates and configs:
+{{$ALLOWED_SLOW_API_CALLS := DefaultParam .CL2_ALLOWED_SLOW_API_CALLS 0}}
+{{$API_AVAILABILITY_PERCENTAGE_THRESHOLD := DefaultParam .CL2_API_AVAILABILITY_PERCENTAGE_THRESHOLD 99.5}}
+{{$CUSTOM_API_CALL_THRESHOLDS := DefaultParam .CUSTOM_API_CALL_THRESHOLDS ""}}
+{{$ENABLE_API_AVAILABILITY_MEASUREMENT := DefaultParam .CL2_ENABLE_API_AVAILABILITY_MEASUREMENT false}}
+{{$ENABLE_VIOLATIONS_FOR_API_CALL_PROMETHEUS := DefaultParam .CL2_ENABLE_VIOLATIONS_FOR_API_CALL_PROMETHEUS false}}
+{{$ENABLE_VIOLATIONS_FOR_API_CALL_PROMETHEUS_SIMPLE := DefaultParam .CL2_ENABLE_VIOLATIONS_FOR_API_CALL_PROMETHEUS_SIMPLE true}}
+{{$ENABLE_CONTAINER_RESTARTS_MEASUREMENT := DefaultParam .CL2_ENABLE_CONTAINER_RESTARTS_MEASUREMENT true}}
+{{$ENABLE_CONTAINER_RESOURCES_MEASUREMENT := DefaultParam .CL2_ENABLE_CONTAINER_RESOURCES_MEASUREMENT true}}
+{{$CUSTOM_ALLOWED_CONTAINER_RESTARTS := DefaultParam .CL2_CUSTOM_ALLOWED_CONTAINER_RESTARTS ""}}
+{{$USE_SIMPLE_LATENCY_QUERY := DefaultParam .USE_SIMPLE_LATENCY_QUERY false}}
+{{$PROMETHEUS_CLIENT_TYPE := DefaultParam .CL2_PROMETHEUS_CLIENT_TYPE "inCluster"}}
+
+
+
+steps:
+- name: "{{$action}}ing measurements"
+  measurements:
+  - Identifier: APIResponsivenessPrometheus
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: {{$action}}
+{{if not $USE_SIMPLE_LATENCY_QUERY}}
+      enableViolations: {{$ENABLE_VIOLATIONS_FOR_API_CALL_PROMETHEUS}}
+      allowedSlowCalls: {{$ALLOWED_SLOW_API_CALLS}}
+      customThresholds: {{YamlQuote $CUSTOM_API_CALL_THRESHOLDS 4}}
+{{end}}
+{{if $ENABLE_API_AVAILABILITY_MEASUREMENT}}
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: {{$action}}
+      pollFrequency: "5s"
+      hostPollTimeoutSeconds: 5
+      threshold: {{$API_AVAILABILITY_PERCENTAGE_THRESHOLD}}
+{{end}}
+{{if $ENABLE_CONTAINER_RESTARTS_MEASUREMENT}}
+  - Identifier: ContainerRestarts kube-apiserver
+    Method: ContainerRestarts
+    Params:
+      action: {{$action}}
+      container: kube-apiserver|kube-controller-manager|kube-scheduler
+      enableViolations: true
+      defaultAllowedRestarts: 1
+      customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+{{end}}
+{{if $ENABLE_CONTAINER_RESOURCES_MEASUREMENT}}
+  - Identifier: ApiserverContainerCPU
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: ApiserverContainerCPU
+      metricVersion: v1
+      unit: cores
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:]))
+          requireSamples: true
+        - name: Perc99
+          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+          requireSamples: true
+        - name: Perc90
+          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+          requireSamples: true
+        - name: Perc50
+          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+          requireSamples: true
+  - Identifier: ApiserverContainerMemory
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: ApiserverContainerMemory
+      metricVersion: v1
+      unit: MiB
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max(max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+        - name: Perc99
+          query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+        - name: Perc90
+          query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+        - name: Perc50
+          query: max(quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+  - Identifier: EtcdContainerCPU
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: EtcdContainerCPU
+      metricVersion: v1
+      unit: cores
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m])[%v:]))
+          requireSamples: true
+        - name: Perc99
+          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m]))[%v:]))
+          requireSamples: true
+        - name: Perc90
+          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m]))[%v:]))
+          requireSamples: true
+        - name: Perc50
+          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m]))[%v:]))
+          requireSamples: true
+  - Identifier: EtcdContainerMemory
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: EtcdContainerMemory
+      metricVersion: v1
+      unit: MiB
+      dimensions:
+        - container
+      queries:
+        - name: max
+          query: max(max_over_time((container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+
+        - name: Perc99
+          query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+        - name: Perc90
+          query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+        - name: Perc50
+          query: max(quantile_over_time(0.50, (container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          requireSamples: true
+  - Identifier: EtcdRequestDuration
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: EtcdRequestDuration
+      metricVersion: v1
+      unit: ms
+      dimensions:
+        - endpoint
+      queries:
+        - name: Perc99
+          query: histogram_quantile(0.99, sum by (le) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000
+          requireSamples: true
+        - name: Perc90
+          query: histogram_quantile(0.90, sum by (le) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000
+          requireSamples: true
+        - name: Perc50
+          query: histogram_quantile(0.50, sum by (le) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000
+          requireSamples: true
+{{end}}

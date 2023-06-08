@@ -1,0 +1,81 @@
+{{$HostNetworkMode := DefaultParam .CL2_USE_HOST_NETWORK_PODS false}}
+# Keep the CpuRequest/MemoryRequest request equal percentage of 1-core, 4GB node.
+# For now we're setting it to 0.5%.
+{{$CpuRequest := DefaultParam .CpuRequest "5m"}}
+{{$MemoryRequest := DefaultParam .MemoryRequest "2M"}}
+{{$dnsQPSPerClient := DefaultParam .CL2_DNS_QPS_PER_CLIENT 1}}
+# Guard the new DNS tests. Remove it once it's confirmed that it works on a subset of tests.
+{{$USE_ADVANCED_DNSTEST := DefaultParam .CL2_USE_ADVANCED_DNSTEST false}}
+{{$RUN_ON_ARM_NODES := DefaultParam .CL2_RUN_ON_ARM_NODES false}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Name}}
+  labels:
+    group: load
+  annotations:
+    description: |
+      This is a sample annotation with a large amount of text. It is intended to demonstrate how to create an annotation with a long value. Annotations are used to attach arbitrary metadata to Kubernetes objects, and can be used by tools and controllers to store additional information about the object. In this case, the annotation provides a description of the deployment.
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec euismod, sem vel tempor bibendum, nulla tortor blandit elit, eget pretium orci lorem eu lorem. Fusce quis mauris id velit tincidunt facilisis. Sed vel ligula sed mi vestibulum mollis. Sed euismod porttitor enim, vel bibendum odio fermentum eget. Sed blandit semper mauris, sit amet bibendum justo dapibus vel. Donec ac metus eget metus bibendum egestas. Aliquam erat volutpat. Nullam ac dolor turpis.
+
+spec:
+  replicas: {{.Replicas}}
+  selector:
+    matchLabels:
+      name: {{.Name}}
+  template:
+    metadata:
+      labels:
+        group: load
+        name: {{.Name}}
+{{if and .EnableDNSTests $USE_ADVANCED_DNSTEST}}
+        dns-test: dnsperfgo
+{{end}}
+    spec:
+      hostNetwork: {{$HostNetworkMode}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubemark
+                    operator: Exists
+      containers:
+      - image: registry.aliyuncs.com/google_containers/pause:3.2
+        name: {{.Name}}
+        resources:
+          requests:
+            cpu: {{$CpuRequest}}
+            memory: {{$MemoryRequest}}
+        volumeMounts:
+          - name: configmap
+            mountPath: /var/configmap
+          - name: secret
+            mountPath: /var/secret
+      terminationGracePeriodSeconds: 1
+      # Add not-ready/unreachable tolerations for 15 minutes so that node
+      # failure doesn't trigger pod deletion.
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 900
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 900
+      {{if $RUN_ON_ARM_NODES}}
+      - key: "kubernetes.io/arch"
+        operator: Equal
+        value: arm64
+        effect: NoSchedule
+      {{end}}
+      volumes:
+        - name: configmap
+          configMap:
+            name: {{.BaseName}}-{{.Index}}
+        - name: secret
+          secret:
+            secretName: {{.BaseName}}-{{.Index}}
+

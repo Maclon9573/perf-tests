@@ -1,0 +1,27 @@
+## Input params
+# Valid actions: "create", "scale and update", "delete"
+{{$actionName := printf "%s objects" .actionName}}
+{{$namespaces := .namespaces}}
+{{$tuningSet := .tuningSet}}
+
+# Deployments
+{{$deploymentSize := .deploymentSize}}
+{{$deploymentsPerNamespace := .deploymentsPerNamespace}}
+{{$cpuRequest := .cpuRequest}}
+{{$memoryRequest := .memoryRequest}}
+
+steps:
+- name: {{$actionName}}
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{$namespaces}}
+    replicasPerNamespace: {{$deploymentsPerNamespace}}
+    tuningSet: {{$tuningSet}}
+    objectBundle:
+    - basename: deployment
+      objectTemplatePath: deployment.yaml
+      templateFillMap:
+        Replicas: {{$deploymentSize}}
+        CpuRequest: {{.cpuRequest}}m
+        MemoryRequest: {{.memoryRequest}}M

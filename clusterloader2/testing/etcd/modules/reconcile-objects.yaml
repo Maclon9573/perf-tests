@@ -1,9 +1,8 @@
 ## Input params
 # Valid actions: "create", "scale and update", "delete"
-{{$actionName := printf "%s objects" .actionName}}
+{{$actionName := printf "%s objects round %s" .actionName .round}}
 {{$namespaces := .namespaces}}
 {{$tuningSet := .tuningSet}}
-
 # Deployments
 {{$deploymentSize := .deploymentSize}}
 {{$deploymentsPerNamespace := .deploymentsPerNamespace}}

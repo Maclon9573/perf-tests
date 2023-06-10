@@ -7,15 +7,15 @@ set -o pipefail
 testconfig=""
 provider=""
 kubeconfig=""
-## 方案集合,每个方案由6个数字组成,分别表示:
-# 1.节点数(kubemark)
+## 方案集合,根据测试组件不同,每个方案由3个或6个数字组成,每个数字的含义:
+# 1.节点数(kubemark hollow nodes,如果不使用kubemark,则设置为0)
 # 2.每个节点workload数量
 # 3.每个workload的pod数量;如果不使用kubemark,节点数设为0
 # 4.每个真实节点的listpod workload数量
 # 5.每个workload的listpod数量
 # 6.每个listpod并发数量
 schemes=(
-  "5 1 1 1 1 1"
+  "0 10000 1"
 )
 qps=""
 report_dir=""
@@ -24,7 +24,10 @@ prometheus_apiserver_scrape_port="6443"
 prometheus_storage_class_provisioner=""
 prometheus_pvc_storage_class=""
 tear_down_prometheus_server="false"
-enable_kubemark="true"
+enable_kubemark="false"
+test_component=""
+
+export K8S_CLIENTS_NUMBER=0
 
 print_line() {
    echo "--------------------------------------------------------------------------------"
@@ -78,6 +81,14 @@ while [[ $# -gt 0 ]]; do
           enable_kubemark="$2"
           shift
           ;;
+    --test-component)
+          test_component="$2"
+          shift
+          ;;
+    --k8s-client-num)
+          export K8S_CLIENTS_NUMBER="$2"
+          shift
+          ;;
     *)
       # 对于未知的选项或参数进行其他处理，如果需要的话
       echo "未知选项或参数: $key"
@@ -102,40 +113,52 @@ echo "是否启用 Prometheus 服务: $enable_prometheus_server"
 echo "报告目录: $report_dir"
 print_line
 
-if [ $enable_kubemark = "true" ]; then
-    # 检查kubemark yaml文件是否存在
-    if [ ! -f "./kubemark-rc.yaml" ]; then
-      echo "kubemark部署文件不存在."
-      exit 1
-    fi
-fi
-
 # 设置KUBECONFIG以执行kubectl
 export KUBECONFIG=$kubeconfig
 
-# 创建kubemark命名空间和secret
-if ! $(kubectl create ns kubemark 2&>/dev/null); then
-  echo 'namespaces kubemark already exists'
-else
-  echo 'created namespaces kubemark'
+if [ $enable_kubemark = "true" ]; then
+  # 检查kubemark yaml文件是否存在
+  if [ ! -f "./kubemark-rc.yaml" ]; then
+    echo "kubemark部署文件不存在."
+    exit 1
+  fi
+  # 创建kubemark命名空间和secret
+  if ! $(kubectl create ns kubemark 2&>/dev/null); then
+    echo 'namespaces kubemark already exists'
+  else
+    echo 'created namespaces kubemark'
+  fi
+
+  if ! $(kubectl create secret generic kubeconfig --type=Opaque --namespace=kubemark \
+         --from-file=kubelet.kubeconfig=$kubeconfig --from-file=kubeproxy.kubeconfig=$kubeconfig 2&>/dev/null); then
+    echo 'secrets kubeconfig already exists'
+  else
+    echo 'created secrets kubeconfig'
+  fi
+elif [ $enable_kubemark = "false" ]; then
+  for ((i=0; i<${#schemes[@]}; i++)); do
+    values=(${schemes[$i]})
+    if [ ${values[0]} -eq 0 ]; then
+      echo '未启用kubemark,但是hollow node不为0'
+    fi
+  done
+  if $(kubectl get nodes |grep -w Ready |grep -q hollow); then
+    echo '未启用kubemark,但是存在hollow nodes'
+    exit 1
+  fi
 fi
 
-if ! $(kubectl create secret generic kubeconfig --type=Opaque --namespace=kubemark \
-       --from-file=kubelet.kubeconfig=$kubeconfig --from-file=kubeproxy.kubeconfig=$kubeconfig 2&>/dev/null); then
-  echo 'secrets kubeconfig already exists'
-else
-  echo 'created secrets kubeconfig'
-fi
-
-# 创建listpods clusterRoleBinding
-if [ ! -f "./listpods-clusterrolebinding.yaml" ]; then
-  echo "listpods clusterRoleBinding文件不存在."
-  exit 1
-fi
-if ! $(kubectl apply -f ./listpods-clusterrolebinding.yaml); then
-  echo 'listpods clusterRoleBinding already exists'
-else
-  echo 'created listpods clusterRoleBinding'
+if [ "x${test_component}" = "xapiserver" ]; then
+  # 创建listpods clusterRoleBinding
+  if [ ! -f "./listpods-clusterrolebinding.yaml" ]; then
+    echo "listpods clusterRoleBinding文件不存在."
+    exit 1
+  fi
+  if ! $(kubectl apply -f ./listpods-clusterrolebinding.yaml); then
+    echo 'listpods clusterRoleBinding already exists'
+  else
+    echo 'created listpods clusterRoleBinding'
+  fi
 fi
 
 # 获取非kubemark节点数,并过滤掉master节点
@@ -154,14 +177,23 @@ fi
 MAX_TIMEOUT=900  # kubemark hollow nodes满足条件超时时间，以秒为单位
 index=1
 for ((i=0; i<${#schemes[@]}; i++)); do
-    values=(${schemes[$i]})
+  values=(${schemes[$i]})
+  if [ ${#values[@]} = 6 ]; then
     nodes=${values[0]}
     workload=${values[1]}
     pods=${values[2]}
     listpods_workload=${values[3]}
     listpods=${values[4]}
     listpods_concurrency=${values[5]}
-
+  elif [ ${#values[@]} = 3 ]; then
+    nodes=${values[0]}
+    workload=${values[1]}
+    pods=${values[2]}
+    listpods_workload=0
+    listpods=0
+    listpods_concurrency=0
+  fi
+  if [ $enable_kubemark = "true" ]; then
     # 等待kubemark hollow nodes满足条件
     sed -i "" "/replicas/s/replicas.*/replicas: ${nodes}/" ./kubemark-rc.yaml 2&>/dev/null # Macos
     sed -i "/replicas/s/replicas.*/replicas: ${nodes}/" ./kubemark-rc.yaml 2&>/dev/null # Linux
@@ -189,53 +221,63 @@ for ((i=0; i<${#schemes[@]}; i++)); do
           sleep 5
       fi
     done
+  fi
 
-    print_line
-    start_time=$(date +%s)
-    current_date=$(date +"%Y-%m-%d-%H:%M:%S")
-    echo "开始第${index}次测试,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 当前时间$current_date"
-    # 在report_dir中创建子目录
+  print_line
+  start_time=$(date +%s)
+  current_date=$(date +"%Y-%m-%d-%H:%M:%S")
+  echo "开始第${index}次测试,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 当前时间$current_date"
+  # 在report_dir中创建子目录
+  if [ ${#values[@]} -eq 6 ]; then
     new_report_dir="${report_dir}/result_${nodes}_${workload}_${pods}_${listpods_workload}_${listpods}_${listpods_concurrency}-${current_date}"
-    mkdir -p "${new_report_dir}"
+  elif [ ${#values[@]} -eq 3 ]; then
+    new_report_dir="${report_dir}/result_${nodes}_${workload}_${pods}-${current_date}"
+  fi
+  mkdir -p "${new_report_dir}"
 
-    source ./cl2-env
-    ./clusterloader2 \
-      --nodes=$nodes \
-      --enable-prometheus-server=${enable_prometheus_server} \
-      --prometheus-apiserver-scrape-port=$prometheus_apiserver_scrape_port \
-      --tear-down-prometheus-server=$tear_down_prometheus_server \
-      --prometheus-scrape-master-kubelets=true \
-      --testconfig="$testconfig" \
-      --provider="$provider" \
-      --kubeconfig="$kubeconfig" \
-      --report-dir="$new_report_dir" \
-      --v=2 2>&1 |tee $new_report_dir/cl2_test.log
+  if [ $enable_kubemark = "false" ]; then
+    nodes=$real_nodes_count
+  fi
+  source ./cl2-env
+  ./clusterloader2 \
+    --nodes=$nodes \
+    --enable-prometheus-server=${enable_prometheus_server} \
+    --prometheus-apiserver-scrape-port=$prometheus_apiserver_scrape_port \
+    --tear-down-prometheus-server=$tear_down_prometheus_server \
+    --prometheus-scrape-master-kubelets=true \
+    --testconfig="$testconfig" \
+    --provider="$provider" \
+    --kubeconfig="$kubeconfig" \
+    --report-dir="$new_report_dir" \
+    --v=2 2>&1 |tee $new_report_dir/cl2_test.log
+  print_line
+
+  test_result=$(tail -50 $new_report_dir/cl2_test.log |grep "Status" |grep -Eo "Success|Fail")
+  end_time=$(date +%s)
+  execution_time=$((end_time - start_time))
+  # 检查 clusterloader2 的退出状态
+  if [ "x$test_result" = "xFail" ]; then
+    echo "第${index}次测试失败,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 测试耗时${execution_time}s"
+    echo "clusterloader2执行失败，report_dir: $report_dir"
     print_line
-
-    test_result=$(tail -50 $new_report_dir/cl2_test.log |grep "Status" |grep -Eo "Success|Fail")
-    end_time=$(date +%s)
-    execution_time=$((end_time - start_time))
-    # 检查 clusterloader2 的退出状态
-    if [ "x$test_result" = "xFail" ]; then
-      echo "第${index}次测试失败,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 测试耗时${execution_time}s"
-      echo "clusterloader2执行失败，report_dir: $report_dir"
-      print_line
-      break
-    elif [ "x$test_result" = "xSuccess" ]; then
-      echo "第${index}次测试成功,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 测试耗时${execution_time}s"
-      echo "clusterloader2执行成功，report_dir: $report_dir"
-      print_line
-      index=$((index + 1))
-      continue
-    else
-      echo "第${index}次测试失败,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 无法获取测试结果"
-      print_line
-      exit 1
-    fi
+    break
+  elif [ "x$test_result" = "xSuccess" ]; then
+    echo "第${index}次测试成功,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 测试耗时${execution_time}s"
+    echo "clusterloader2执行成功，report_dir: $report_dir"
+    print_line
+    index=$((index + 1))
+    continue
+  else
+    echo "第${index}次测试失败,node数量: ${nodes}, workloads per node: ${workload}, pods per workload: ${pods}, 无法获取测试结果"
+    print_line
+    exit 1
+  fi
 done
 
-# 删除listpods clusterRoleBinding
-kubectl delete -f listpods-clusterrolebinding.yaml
+if [ $test_component = "apiserver" ]; then
+  # 删除listpods clusterRoleBinding
+  kubectl delete -f listpods-clusterrolebinding.yaml
+fi
 # 删除kubemark hollow ndoes
 # kubectl delete rc -n kubemark hollow-node
 # 删除NotReady状态的hollow nodes

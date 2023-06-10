@@ -2,6 +2,7 @@
 {{$CL2_TUNINGSET_QPS := DefaultParam .CL2_TUNINGSET_QPS 10}}
 
 {{$CL2_WORKLOAD_PER_NAMESPACE := DefaultParam .CL2_WORKLOAD_PER_NAMESPACE 50}}
+{{$SCALED_WORKLOAD_PER_NAMESPACE := DivideInt .CL2_WORKLOAD_PER_NAMESPACE 2}}
 {{$CL2_PODS_PER_WORKLOAD := DefaultParam .CL2_PODS_PER_WORKLOAD 1}}
 
 {{$POD_CPU := DefaultParam .POD_CPU 10}}
@@ -45,13 +46,7 @@ steps:
       deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
       cpuRequest: {{$POD_CPU}}
       memoryRequest: {{$POD_MEMORY}}
-
-#- name: Listing and watching
-#  measurements:
-#    - Identifier: Wait
-#      Method: Sleep
-#      Params:
-#        duration: 1m
+      round: "1"
 
 - module:
     path: /modules/reconcile-objects.yaml
@@ -61,9 +56,10 @@ steps:
       tuningSet: default
       operationTimeout: 5m
       deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
-      deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+      deploymentsPerNamespace: {{$SCALED_WORKLOAD_PER_NAMESPACE}}
       cpuRequest: {{$POD_CPU}}
       memoryRequest: {{$POD_MEMORY}}
+      round: "1"
 
 - module:
     path: /modules/reconcile-objects.yaml
@@ -76,6 +72,86 @@ steps:
       deploymentsPerNamespace: 0
       cpuRequest: {{$POD_CPU}}
       memoryRequest: {{$POD_MEMORY}}
+      round: "1"
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "create"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+      round: "2"
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "scale and update"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: {{$SCALED_WORKLOAD_PER_NAMESPACE}}
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+      round: "2"
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "delete"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: 0
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+      round: "2"
+
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "create"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: {{$CL2_WORKLOAD_PER_NAMESPACE}}
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+      round: "3"
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "scale and update"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: {{$SCALED_WORKLOAD_PER_NAMESPACE}}
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+      round: "3"
+
+- module:
+    path: /modules/reconcile-objects.yaml
+    params:
+      actionName: "delete"
+      namespaces: {{$namespaces}}
+      tuningSet: default
+      operationTimeout: 5m
+      deploymentSize: {{$CL2_PODS_PER_WORKLOAD}}
+      deploymentsPerNamespace: 0
+      cpuRequest: {{$POD_CPU}}
+      memoryRequest: {{$POD_MEMORY}}
+      round: "3"
 
 - module:
     path: /modules/configmaps-secrets.yaml

@@ -1,9 +1,9 @@
 export CL2_APISERVER_PORT=6443
 export CL2_KUBE_CONFIG=${kubeconfig}
 
+export CL2_TUNINGSET_QPS=${qps}
 export CL2_WORKLOAD_PER_NAMESPACE=${workload}
 export CL2_PODS_PER_WORKLOAD=${pods}
-export CL2_TUNINGSET_QPS=${qps}
 
 # prometheus
 export CL2_PROMETHEUS_TOLERATE_MASTER=true 	# 控制prometheus是否使用stroage class,true则不使用

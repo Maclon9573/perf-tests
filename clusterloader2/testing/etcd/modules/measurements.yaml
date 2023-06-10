@@ -43,109 +43,60 @@ steps:
     Method: ContainerRestarts
     Params:
       action: {{$action}}
-      container: kube-apiserver|kube-controller-manager|kube-scheduler
+      container: kube-apiserver|kube-controller-manager|kube-scheduler|etcd
       enableViolations: true
       defaultAllowedRestarts: 1
       customAllowedRestarts: {{YamlQuote $CUSTOM_ALLOWED_CONTAINER_RESTARTS 4}}
       prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
 {{end}}
 {{if $ENABLE_CONTAINER_RESOURCES_MEASUREMENT}}
-  - Identifier: ApiserverContainerCPU
+  - Identifier: ContainerCPU
     Method: GenericPrometheusQuery
     Params:
       action: {{$action}}
       prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
       enableViolations: true
-      metricName: ApiserverContainerCPU
+      metricName: ContainerCPU
       metricVersion: v1
       unit: cores
       dimensions:
         - container
       queries:
         - name: max
-          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m])[%v:]))
+          query: max by (container) (max_over_time((rate(container_cpu_usage_seconds_total{container=~"kube-apiserver|etcd",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
         - name: Perc99
-          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+          query: max by (container) (quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container=~"kube-apiserver|etcd",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
         - name: Perc90
-          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+          query: max by (container) (quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container=~"kube-apiserver|etcd",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
         - name: Perc50
-          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="kube-apiserver",endpoint="kubelet"}[1m]))[%v:]))
+          query: max by (container) (quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container=~"kube-apiserver|etcd",endpoint="kubelet"}[1m]))[%v:]))
           requireSamples: true
-  - Identifier: ApiserverContainerMemory
+  - Identifier: ContainerMemory
     Method: GenericPrometheusQuery
     Params:
       action: {{$action}}
       prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
       enableViolations: true
-      metricName: ApiserverContainerMemory
+      metricName: ContainerMemory
       metricVersion: v1
       unit: MiB
       dimensions:
         - container
       queries:
         - name: max
-          query: max(max_over_time((container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          query: max by (container) (max_over_time((container_memory_working_set_bytes{container=~"kube-apiserver|etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
         - name: Perc99
-          query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          query: max by (container) (quantile_over_time(0.99, (container_memory_working_set_bytes{container=~"kube-apiserver|etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
         - name: Perc90
-          query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          query: max by (container) (quantile_over_time(0.90, (container_memory_working_set_bytes{container=~"kube-apiserver|etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
         - name: Perc50
-          query: max(quantile_over_time(0.50, (container_memory_working_set_bytes{container="kube-apiserver",endpoint="kubelet"} / 1024 / 1024)[%v:]))
-          requireSamples: true
-  - Identifier: EtcdContainerCPU
-    Method: GenericPrometheusQuery
-    Params:
-      action: {{$action}}
-      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
-      enableViolations: true
-      metricName: EtcdContainerCPU
-      metricVersion: v1
-      unit: cores
-      dimensions:
-        - container
-      queries:
-        - name: max
-          query: max(max_over_time(rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m])[%v:]))
-          requireSamples: true
-        - name: Perc99
-          query: max(quantile_over_time(0.99, (rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m]))[%v:]))
-          requireSamples: true
-        - name: Perc90
-          query: max(quantile_over_time(0.90, (rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m]))[%v:]))
-          requireSamples: true
-        - name: Perc50
-          query: max(quantile_over_time(0.50, (rate(container_cpu_usage_seconds_total{container="etcd",endpoint="kubelet"}[1m]))[%v:]))
-          requireSamples: true
-  - Identifier: EtcdContainerMemory
-    Method: GenericPrometheusQuery
-    Params:
-      action: {{$action}}
-      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
-      enableViolations: true
-      metricName: EtcdContainerMemory
-      metricVersion: v1
-      unit: MiB
-      dimensions:
-        - container
-      queries:
-        - name: max
-          query: max(max_over_time((container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
-          requireSamples: true
-
-        - name: Perc99
-          query: max(quantile_over_time(0.99, (container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
-          requireSamples: true
-        - name: Perc90
-          query: max(quantile_over_time(0.90, (container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
-          requireSamples: true
-        - name: Perc50
-          query: max(quantile_over_time(0.50, (container_memory_working_set_bytes{container="etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
+          query: max by (container) (quantile_over_time(0.50, (container_memory_working_set_bytes{container=~"kube-apiserver|etcd",endpoint="kubelet"} / 1024 / 1024)[%v:]))
           requireSamples: true
   - Identifier: EtcdRequestDuration
     Method: GenericPrometheusQuery
@@ -157,15 +108,78 @@ steps:
       metricVersion: v1
       unit: ms
       dimensions:
-        - endpoint
+        - instance
       queries:
         - name: Perc99
-          query: histogram_quantile(0.99, sum by (le) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000
+          query: max by (instance) (histogram_quantile(0.99, sum by (le, instance) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000)
           requireSamples: true
         - name: Perc90
-          query: histogram_quantile(0.90, sum by (le) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000
+          query: max by (instance) (histogram_quantile(0.90, sum by (le, instance) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000)
           requireSamples: true
         - name: Perc50
-          query: histogram_quantile(0.50, sum by (le) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000
+          query: max by (instance) (histogram_quantile(0.50, sum by (le, instance) (rate(etcd_request_duration_seconds_bucket[%v]))) * 1000)
           requireSamples: true
+  - Identifier: EtcdWalFsyncDuration
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: EtcdWalFsyncDuration
+      metricVersion: v1
+      unit: ms
+      dimensions:
+        - instance
+      queries:
+        - name: Perc99
+          query: max by (instance) (histogram_quantile(0.99, sum by (le, instance) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[%v]))) * 1000)
+          requireSamples: true
+          threshold: 500
+        - name: Perc90
+          query: max by (instance) (histogram_quantile(0.90, sum by (le, instance) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[%v]))) * 1000)
+          requireSamples: true
+        - name: Perc50
+          query: max by (instance) (histogram_quantile(0.50, sum by (le, instance) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[%v]))) * 1000)
+          requireSamples: true
+  - Identifier: EtcdDiskBackendCommitDuration
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: EtcdDiskBackendCommitDuration
+      metricVersion: v1
+      unit: ms
+      dimensions:
+        - instance
+      queries:
+        - name: Perc99
+          query: max by (instance) (histogram_quantile(0.99, sum by (le, instance) (rate(etcd_disk_backend_commit_duration_seconds_bucket[%v]))) * 1000)
+          requireSamples: true
+          threshold: 250
+        - name: Perc90
+          query: max by (instance) (histogram_quantile(0.90, sum by (le, instance) (rate(etcd_disk_backend_commit_duration_seconds_bucket[%v]))) * 1000)
+          requireSamples: true
+        - name: Perc50
+          query: max by (instance) (histogram_quantile(0.50, sum by (le, instance) (rate(etcd_disk_backend_commit_duration_seconds_bucket[%v]))) * 1000)
+          requireSamples: true
+  - Identifier: EtcdNetworkPeerRT
+    Method: GenericPrometheusQuery
+    Params:
+      action: {{$action}}
+      prometheusClient: {{$PROMETHEUS_CLIENT_TYPE}}
+      enableViolations: true
+      metricName: EtcdNetworkPeerRT
+      metricVersion: v1
+      unit: ms
+      dimensions:
+        - instance
+      queries:
+        - name: Perc99
+          query: max by (instance) (histogram_quantile(0.99, sum by (le, instance) (rate(etcd_network_peer_round_trip_time_seconds_bucket[%v]))) * 1000)
+          threshold: 150
+        - name: Perc90
+          query: max by (instance) (histogram_quantile(0.90, sum by (le, instance) (rate(etcd_network_peer_round_trip_time_seconds_bucket[%v]))) * 1000)
+        - name: Perc50
+          query: max by (instance) (histogram_quantile(0.50, sum by (le, instance) (rate(etcd_network_peer_round_trip_time_seconds_bucket[%v]))) * 1000)
 {{end}}

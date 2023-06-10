@@ -40,7 +40,7 @@ spec:
             nodeSelectorTerms:
               - matchExpressions:
                   - key: kubemark
-                    operator: Exists
+                    operator: DoesNotExist
       containers:
       - image: registry.aliyuncs.com/google_containers/pause:3.2
         name: {{.Name}}
